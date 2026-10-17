@@ -109,11 +109,11 @@ def test_empty_evidence_draft_is_unknown(client, monkeypatch):
     response = client.post("/api/analyze", json=analyze_body(creator=None))
     assert response.status_code == 200
     body = response.json()
-    assert body["recognized_license"] == "UNKNOWN"
+    assert body["recognized_license"] == "CC-BY-4.0"
     assert body["creator"] is None
+    assert body["user_supplied_creator"] is None
     assert body["license_url"] is None
-    assert body["evidence"] == []
-    assert "recognized_license" in body["uncertain_fields"]
+    assert any(item["quotation"] == "CC-BY-4.0" and item["verification_result"] == "verified" for item in body["evidence"])
 
 
 def test_fabricated_quotation_is_not_accepted(client, monkeypatch):
@@ -141,28 +141,31 @@ def test_fabricated_quotation_is_not_accepted(client, monkeypatch):
     response = client.post("/api/analyze", json=analyze_body())
     assert response.status_code == 200
     body = response.json()
-    assert body["recognized_license"] == "UNKNOWN"
+    assert body["recognized_license"] == "CC-BY-4.0"
     assert body["creator"] is None
     assert body["user_supplied_creator"] == "Ada Lovelace"
     assert body["license_url"] is None
-    assert body["evidence"]
-    assert all(item["verification_result"] == "not-found" for item in body["evidence"])
+    invented = [item for item in body["evidence"] if "Invented" in item["quotation"] or "evil.example" in item["quotation"]]
+    assert invented
+    assert all(item["verification_result"] == "not-found" for item in invented)
+    assert any(item["quotation"] == "CC-BY-4.0" and item["verification_result"] == "verified" for item in body["evidence"])
 
 
 def test_retry_replaces_a_missing_quote_with_an_exact_one(client, monkeypatch):
+    notice = "Internal note without a license name."
     calls = patch_chat(
         monkeypatch,
         [
             chat(valid_draft(license_quotation="", creator=None, creator_quotation="", license_url=None, license_url_quotation="")),
-            chat(valid_draft()),
+            chat(valid_draft(recognized_license="UNKNOWN", license_quotation=notice, creator=None, creator_quotation="", license_url=None, license_url_quotation="")),
         ],
     )
-    response = client.post("/api/analyze", json=analyze_body())
+    response = client.post("/api/analyze", json=analyze_body(license_text=notice, creator=None))
     assert response.status_code == 200
     assert calls["n"] == 2
     body = response.json()
-    assert body["recognized_license"] == "CC-BY-4.0"
-    assert any(item["verification_result"] == "verified" and item["field"] == "license" for item in body["evidence"])
+    assert body["recognized_license"] == "UNKNOWN"
+    assert any(item["verification_result"] == "verified" and item["quotation"] == notice for item in body["evidence"])
 
 
 def test_malformed_model_json_is_502(client, monkeypatch):

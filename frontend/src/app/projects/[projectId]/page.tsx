@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { EmptyNote, ErrorNote, FieldErrorText, LoadingNote, SuccessNote } from "@/components/Feedback";
 import { ApiError, assetsApi, fieldMessage, projectsApi, reportsApi, type AssetInput } from "@/lib/api";
+import { reportFilename, saveGeneratedReport, writeMarkdownInBrowser } from "@/lib/download";
 import { DEMO_EXAMPLES, type DemoExample } from "@/lib/examples";
 import { readAssetMeta, writeAssetMeta } from "@/lib/storage";
 import { Asset, INTENDED_USES, IntendedUse, Project, intendedUseLabel, reviewStatusLabel } from "@/lib/types";
@@ -124,20 +125,13 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
         if (assetType) assetTypes[asset.id] = assetType;
       }
       const report = await reportsApi.create(projectId, assetTypes);
-      if (!report.markdown) {
-        throw new ApiError("The report was not generated.", 0);
-      }
-      const blob = new Blob([report.markdown], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `proveniq-${projectId}-v${report.report_version}.md`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      const filename = await saveGeneratedReport(
+        report.markdown,
+        reportFilename(projectId, report.report_version),
+        writeMarkdownInBrowser,
+      );
       setReportHref(`/reports/${report.id}`);
-      setReportMessage(`Downloaded proveniq-${projectId}-v${report.report_version}.md.`);
+      setReportMessage(`Downloaded ${filename}.`);
     } catch (error) {
       setReportError(error instanceof Error ? error.message : "The report could not be downloaded.");
     } finally {
