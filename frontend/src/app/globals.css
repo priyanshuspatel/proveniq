@@ -1,37 +1,44 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #f3efe6;
-  --ink: #1d1a16;
-  --muted: #5e584f;
-  --line: #d9d1c3;
-  --clay: #8d3d32;
-  --clay-deep: #6d2c24;
-  --card: #fffdf8;
-  --ok: #1f5c45;
-  --warn: #8a5a12;
+  --background: #f7f7f8;
+  --card: #ffffff;
+  --ink: #1c1917;
+  --muted: #57534e;
+  --line: #e7e5e4;
+  --indigo: #3730a3;
+  --indigo-soft: #eef2ff;
 }
 
 @theme inline {
-  --color-paper: var(--paper);
+  --color-background: var(--background);
+  --color-card: var(--card);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
-  --color-clay: var(--clay);
-  --color-clay-deep: var(--clay-deep);
-  --color-card: var(--card);
-  --color-ok: var(--ok);
-  --color-warn: var(--warn);
+  --color-indigo: var(--indigo);
+  --color-indigo-soft: var(--indigo-soft);
   --font-sans: var(--font-source);
-  --font-serif: var(--font-fraunces);
 }
 
 body {
-  background: var(--paper);
+  background: var(--background);
   color: var(--ink);
   font-family: var(--font-source), sans-serif;
 }
 
 a {
   color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
 }

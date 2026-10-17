@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Source_Sans_3 } from "next/font/google";
+import { Source_Sans_3 } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
@@ -8,32 +8,27 @@ const sourceSans = Source_Sans_3({
   subsets: ["latin"],
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "LicenseTrail",
-  description: "Organize project assets and the license details a designer declared.",
+  title: "Proveniq",
+  description: "LicenseTrail desk for declared asset licenses.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${sourceSans.variable} ${fraunces.variable} antialiased`}>
+      <body className={`${sourceSans.variable} antialiased`}>
         <header className="border-b border-line bg-card">
-          <div className="mx-auto flex max-w-6xl items-baseline justify-between px-6 py-5">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
             <Link href="/" className="no-underline">
-              <p className="font-serif text-2xl tracking-tight">LicenseTrail</p>
-              <p className="text-sm text-muted">Proveniq handoff desk</p>
+              <p className="text-xl font-semibold tracking-tight">Proveniq</p>
+              <p className="text-sm text-muted">LicenseTrail</p>
             </Link>
-            <p className="max-w-sm text-right text-sm text-muted">
-              Records what you declare. It does not decide legal compliance.
+            <p className="max-w-xs text-right text-sm text-muted">
+              Records declarations and checked quotations. Not a legal clearance.
             </p>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
       </body>
     </html>
   );

@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { EmptyNote, ErrorNote, FieldErrorText, LoadingNote, SuccessNote } from "@/components/Feedback";
 import { ApiError, assetsApi, fieldMessage, projectsApi, type AssetInput } from "@/lib/api";
+import { DEMO_EXAMPLES, type DemoExample } from "@/lib/examples";
+import { writeAssetMeta } from "@/lib/storage";
 import { Asset, INTENDED_USES, IntendedUse, Project, intendedUseLabel, reviewStatusLabel } from "@/lib/types";
+
+const inputClass = "mt-1 w-full rounded-md border border-line bg-white px-3 py-2";
 
 export default function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   const router = useRouter();
@@ -14,12 +18,13 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [assetType, setAssetType] = useState("");
   const [creator, setCreator] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [declaredLicense, setDeclaredLicense] = useState("");
   const [licenseText, setLicenseText] = useState("");
   const [intendedUse, setIntendedUse] = useState<"" | IntendedUse>("");
-  const [attribution, setAttribution] = useState("");
+  const [exampleNote, setExampleNote] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -56,6 +61,19 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     };
   }, [projectId, success]);
 
+  function applyExample(example: DemoExample) {
+    setTitle(example.title);
+    setAssetType(example.assetType);
+    setCreator(example.creator);
+    setSourceUrl(example.sourceUrl);
+    setDeclaredLicense(example.declaredLicense);
+    setLicenseText(example.licenseText);
+    setIntendedUse(example.intendedUse);
+    setExampleNote(example.note);
+    setSuccess(null);
+    setFormError(null);
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (!projectId) return;
@@ -69,18 +87,19 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
       source_url: sourceUrl.trim() ? sourceUrl : null,
       supplied_license_text: licenseText.trim() ? licenseText : null,
       intended_use: intendedUse || null,
-      attribution_text: attribution.trim() ? attribution : null,
     };
     try {
       const created = await assetsApi.create(projectId, body);
+      writeAssetMeta(created.id, { assetType, confirmed: false });
       setTitle("");
+      setAssetType("");
       setCreator("");
       setSourceUrl("");
       setDeclaredLicense("");
       setLicenseText("");
       setIntendedUse("");
-      setAttribution("");
-      setSuccess(`Saved “${created.title}”. Screening has not run.`);
+      setExampleNote(null);
+      setSuccess(`Saved “${created.title}”. Open it to analyze the notice.`);
     } catch (error) {
       setFormError(error instanceof ApiError ? error : new ApiError("The asset could not be saved.", 0));
     } finally {
@@ -88,56 +107,48 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     }
   }
 
-  if (!projectId || (project === null && !loadError)) {
-    return <LoadingNote label="Loading project…" />;
-  }
+  if (!projectId || (project === null && !loadError)) return <LoadingNote label="Loading project…" />;
 
   return (
     <div>
-      <Link href="/" className="text-sm text-muted">
-        All projects
-      </Link>
-      {loadError ? (
-        <div className="mt-4">
-          <ErrorNote message={loadError} />
-        </div>
-      ) : null}
+      <Link href="/" className="text-sm text-muted">All projects</Link>
+      {loadError ? <div className="mt-4"><ErrorNote message={loadError} /></div> : null}
       {project ? (
         <>
-          <h1 className="mt-3 font-serif text-4xl tracking-tight">{project.name}</h1>
-          <p className="mt-2 text-muted">
-            {project.client_label ? project.client_label : "No client label"} · Declared use{" "}
-            {intendedUseLabel(project.declared_intended_use)}
-          </p>
-          <button
-            type="button"
-            className="mt-4 rounded-md border border-clay px-4 py-2 text-sm text-clay"
-            onClick={() => {
-              if (!window.confirm(`Delete “${project.name}” and its assets?`)) return;
-              void projectsApi.remove(project.id).then(() => router.push("/")).catch((deleteError: unknown) => {
-                setLoadError(deleteError instanceof Error ? deleteError.message : "The project could not be deleted.");
-              });
-            }}
-          >
-            Delete project
-          </button>
-          <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight">{project.name}</h1>
+              <p className="mt-2 text-muted">
+                {project.client_label || "No client label"} · Declared use {intendedUseLabel(project.declared_intended_use)}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-900"
+              onClick={() => {
+                if (!window.confirm(`Delete “${project.name}” and its assets?`)) return;
+                void projectsApi.remove(project.id).then(() => router.push("/")).catch((deleteError: unknown) => {
+                  setLoadError(deleteError instanceof Error ? deleteError.message : "The project could not be deleted.");
+                });
+              }}
+            >
+              Delete project
+            </button>
+          </div>
+          <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
             <section>
-              <h2 className="font-serif text-2xl">Asset inventory</h2>
+              <h2 className="text-xl font-semibold">Asset inventory</h2>
               <div className="mt-4">
                 {assets === null ? <LoadingNote label="Loading assets…" /> : null}
                 {assets && assets.length === 0 ? (
-                  <EmptyNote title="No assets yet" body="Add the first file with the form. The list stays empty until you do." />
+                  <EmptyNote title="No assets yet" body="Add a file with the form. Nothing is saved until you do." />
                 ) : null}
                 {assets && assets.length > 0 ? (
-                  <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-card">
+                  <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-card">
                     {assets.map((asset) => (
                       <li key={asset.id}>
-                        <Link
-                          href={`/projects/${project.id}/assets/${asset.id}`}
-                          className="block px-5 py-4 no-underline hover:bg-paper"
-                        >
-                          <span className="font-serif text-xl">{asset.title}</span>
+                        <Link href={`/projects/${project.id}/assets/${asset.id}`} className="block px-5 py-4 no-underline hover:bg-indigo-soft">
+                          <span className="text-lg font-medium">{asset.title}</span>
                           <span className="mt-1 block text-sm text-muted">
                             {asset.declared_license} · {reviewStatusLabel(asset.review_status)}
                           </span>
@@ -148,56 +159,35 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
                 ) : null}
               </div>
             </section>
-            <section className="h-fit rounded-md border border-line bg-card p-5">
-              <h2 className="font-serif text-2xl">Add asset</h2>
-              <form className="mt-4 space-y-4" onSubmit={onSubmit}>
-                <label className="block text-sm">
-                  Title
-                  <input className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={300} />
-                  <FieldErrorText message={fieldMessage(formError, "title")} />
-                </label>
-                <label className="block text-sm">
-                  Creator <span className="text-muted">(optional)</span>
-                  <input className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2" value={creator} onChange={(event) => setCreator(event.target.value)} maxLength={200} />
-                  <FieldErrorText message={fieldMessage(formError, "creator")} />
-                </label>
-                <label className="block text-sm">
-                  Source URL <span className="text-muted">(optional, http or https)</span>
-                  <input className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} maxLength={2048} placeholder="https://" />
-                  <FieldErrorText message={fieldMessage(formError, "source_url")} />
-                </label>
-                <label className="block text-sm">
-                  Declared license
-                  <input className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2" value={declaredLicense} onChange={(event) => setDeclaredLicense(event.target.value)} required maxLength={120} placeholder="CC-BY-4.0" />
-                  <FieldErrorText message={fieldMessage(formError, "declared_license")} />
-                </label>
-                <label className="block text-sm">
-                  Supplied license text <span className="text-muted">(optional)</span>
-                  <textarea className="mt-1 min-h-28 w-full rounded-md border border-line bg-white px-3 py-2" value={licenseText} onChange={(event) => setLicenseText(event.target.value)} />
-                  <FieldErrorText message={fieldMessage(formError, "supplied_license_text")} />
-                </label>
-                <label className="block text-sm">
-                  Intended use <span className="text-muted">(optional)</span>
-                  <select className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2" value={intendedUse} onChange={(event) => setIntendedUse(event.target.value as "" | IntendedUse)}>
+            <section className="h-fit rounded-lg border border-line bg-card p-6">
+              <h2 className="text-xl font-semibold">Add asset</h2>
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium">Examples</p>
+                <div className="flex flex-wrap gap-2">
+                  {DEMO_EXAMPLES.map((example) => (
+                    <button key={example.id} type="button" className="rounded-full border border-indigo/30 bg-indigo-soft px-3 py-1 text-sm text-indigo" onClick={() => applyExample(example)}>
+                      {example.label}
+                    </button>
+                  ))}
+                </div>
+                {exampleNote ? <p className="text-sm text-muted">{exampleNote}</p> : null}
+              </div>
+              <form className="mt-5 space-y-4" onSubmit={onSubmit}>
+                <label className="block text-sm font-medium">Title<input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={300} /><FieldErrorText message={fieldMessage(formError, "title")} /></label>
+                <label className="block text-sm font-medium">Type<input className={inputClass} value={assetType} onChange={(event) => setAssetType(event.target.value)} placeholder="image, font, illustration" /></label>
+                <label className="block text-sm font-medium">Creator <span className="font-normal text-muted">(if known)</span><input className={inputClass} value={creator} onChange={(event) => setCreator(event.target.value)} maxLength={200} /></label>
+                <label className="block text-sm font-medium">Source URL<input className={inputClass} value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} maxLength={2048} placeholder="https://" /><FieldErrorText message={fieldMessage(formError, "source_url")} /></label>
+                <label className="block text-sm font-medium">Declared license<input className={inputClass} value={declaredLicense} onChange={(event) => setDeclaredLicense(event.target.value)} required maxLength={120} /><FieldErrorText message={fieldMessage(formError, "declared_license")} /></label>
+                <label className="block text-sm font-medium">License notice<textarea className={`${inputClass} min-h-28`} value={licenseText} onChange={(event) => setLicenseText(event.target.value)} /></label>
+                <label className="block text-sm font-medium">Intended use
+                  <select className={inputClass} value={intendedUse} onChange={(event) => setIntendedUse(event.target.value as "" | IntendedUse)}>
                     <option value="">Not declared</option>
-                    {INTENDED_USES.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
+                    {INTENDED_USES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                   </select>
-                  <FieldErrorText message={fieldMessage(formError, "intended_use")} />
-                </label>
-                <label className="block text-sm">
-                  Attribution text <span className="text-muted">(optional)</span>
-                  <textarea className="mt-1 min-h-20 w-full rounded-md border border-line bg-white px-3 py-2" value={attribution} onChange={(event) => setAttribution(event.target.value)} maxLength={2000} />
-                  <FieldErrorText message={fieldMessage(formError, "attribution_text")} />
                 </label>
                 {formError ? <ErrorNote message={formError.message} /> : null}
                 {success ? <SuccessNote message={success} /> : null}
-                <button type="submit" disabled={submitting} className="rounded-md bg-clay px-4 py-2 text-white disabled:opacity-60">
-                  {submitting ? "Saving…" : "Add asset"}
-                </button>
+                <button type="submit" disabled={submitting} className="rounded-md bg-indigo px-4 py-2 text-white disabled:opacity-60">{submitting ? "Saving…" : "Add asset"}</button>
               </form>
             </section>
           </div>

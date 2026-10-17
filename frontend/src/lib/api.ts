@@ -1,4 +1,4 @@
-import type { Asset, FieldError, IntendedUse, Project } from "./types";
+import type { Asset, FieldError, IntendedUse, Project, ReviewStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -93,4 +93,52 @@ export const assetsApi = {
   update: (assetId: string, body: Partial<AssetInput>) =>
     request<Asset>(`/api/assets/${assetId}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (assetId: string) => request<void>(`/api/assets/${assetId}`, { method: "DELETE" }),
+  evidence: (assetId: string) => request<StoredEvidence[]>(`/api/assets/${assetId}/evidence`),
+  savedScreening: (assetId: string) => request<ScreeningResult>(`/api/assets/${assetId}/screening`),
+  extract: (assetId: string, assetType?: string) => {
+    const query = assetType ? `?asset_type=${encodeURIComponent(assetType)}` : "";
+    return request<ExtractionResult>(`/api/assets/${assetId}/extractions${query}`, { method: "POST" });
+  },
+  screen: (assetId: string) => request<ScreeningResult>(`/api/assets/${assetId}/screening`, { method: "POST" }),
+};
+
+export type ExtractionEvidence = {
+  field: string;
+  quotation: string;
+  verification_result: string;
+};
+
+export type ExtractionResult = {
+  recognized_license: string;
+  creator: string | null;
+  license_url: string | null;
+  attribution_instructions: string | null;
+  uncertain_fields: string[];
+  evidence: ExtractionEvidence[];
+  review_status: ReviewStatus;
+  extraction_note: string | null;
+  user_supplied_creator?: string | null;
+};
+
+export type RuleResult = {
+  rule_id: string;
+  outcome: string;
+  explanation: string;
+};
+
+export type StoredEvidence = {
+  id: string;
+  quotation: string | null;
+  verification_status: string;
+  condition_type: string | null;
+  source_reference: string | null;
+};
+
+export type ScreeningResult = {
+  asset_id: string;
+  saved?: boolean;
+  outdated?: boolean;
+  review_status?: ReviewStatus;
+  summary?: string;
+  rule_results: RuleResult[];
 };

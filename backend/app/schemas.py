@@ -154,3 +154,57 @@ class ErrorBody(ApiModel):
     code: str
     message: str
     details: list[dict[str, str]] = []
+
+
+class AnalyzeRequest(ApiModel):
+    title: str = Field(min_length=1, max_length=300)
+    asset_type: str | None = Field(default=None, max_length=80)
+    creator: str | None = Field(default=None, max_length=200)
+    source_url: str | None = Field(default=None, max_length=2048)
+    license_text: str = Field(min_length=1, max_length=200_000)
+
+    @field_validator("title")
+    @classmethod
+    def title_not_blank(cls, value: str) -> str:
+        return _require_text(value)
+
+    @field_validator("license_text", "creator", "asset_type")
+    @classmethod
+    def optional_or_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _blank_to_none(value) if not isinstance(value, str) or value != value.strip() or True else value
+
+    @field_validator("license_text")
+    @classmethod
+    def license_text_required(cls, value: str | None) -> str:
+        if value is None or not str(value).strip():
+            raise ValueError("license text is required")
+        return str(value).strip()
+
+    @field_validator("source_url")
+    @classmethod
+    def source_url_http(cls, value: str | None) -> str | None:
+        return _http_url(value)
+
+
+class CheckedEvidence(ApiModel):
+    field: str
+    condition_type: str
+    quotation: str
+    verification_result: str
+    quote_start: int | None = None
+    quote_end: int | None = None
+    confidence: float | None = None
+
+
+class AnalyzeRead(ApiModel):
+    recognized_license: str
+    creator: str | None
+    user_supplied_creator: str | None = None
+    license_url: str | None
+    attribution_instructions: str | None
+    uncertain_fields: list[str]
+    evidence: list[CheckedEvidence]
+    review_status: ReviewStatus
+    extraction_note: str | None = None

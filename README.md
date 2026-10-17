@@ -61,7 +61,15 @@ cd backend && source .venv/bin/activate && pytest
 cd frontend && npm run typecheck && npm run lint
 ```
 
-Ollama and Gemma are not used in this phase. A later phase will call a local model through `OLLAMA_HOST` and `OLLAMA_MODEL`.
+Extraction calls a local Ollama model. The default is `gemma2:2b`.
+
+```bash
+brew install ollama
+brew services start ollama
+ollama pull gemma2:2b
+```
+
+`POST /api/analyze` and `POST /api/assets/{id}/extractions` send the supplied license text to that model. Quotations are kept only when they occur in that text. The response stays `manual-review-required`. The app does not fetch source URLs.
 
 ## This phase
 

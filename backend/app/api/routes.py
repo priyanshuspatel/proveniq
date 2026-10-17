@@ -3,6 +3,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
+from app.config import get_settings
+from app.extraction.ollama import ModelOutputRejected, OllamaTimeout, OllamaUnavailable, run_extraction
 from app.persistence.database import (
     create_asset,
     create_project,
@@ -11,18 +13,41 @@ from app.persistence.database import (
     get_asset,
     get_connection,
     get_project,
+    get_saved_screening,
     list_assets,
+    list_conditions,
+    list_evidence,
     list_projects,
+    save_screening,
+    screening_fingerprint,
+    set_review_status,
+    replace_extraction,
     update_asset,
     update_project,
 )
-from app.schemas import AssetCreate, AssetRead, AssetUpdate, HealthRead, ProjectCreate, ProjectRead, ProjectUpdate
+from app.rules.engine import screen_asset
+from app.schemas import (
+    AnalyzeRead,
+    AnalyzeRequest,
+    AssetCreate,
+    AssetRead,
+    AssetUpdate,
+    HealthRead,
+    ProjectCreate,
+    ProjectRead,
+    ProjectUpdate,
+    ReviewStatus,
+)
 
 router = APIRouter()
 
 
 def not_found(message: str) -> HTTPException:
     return HTTPException(status_code=404, detail={"code": "not_found", "message": message, "details": []})
+
+
+def api_error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status_code, detail={"code": code, "message": message, "details": []})
 
 
 def validation_error(loc: str, message: str) -> HTTPException:
@@ -130,6 +155,93 @@ def patch_asset(
     if asset is None:
         raise not_found("Asset not found.")
     return asset
+
+
+def _analyze_text(title: str, asset_type: str | None, creator: str | None, source_url: str | None, license_text: str) -> AnalyzeRead:
+    try:
+        checked = run_extraction(get_settings(), title, asset_type, creator, source_url, license_text)
+    except OllamaTimeout as exc:
+        raise api_error(504, "extraction_timeout", str(exc)) from exc
+    except OllamaUnavailable as exc:
+        raise api_error(503, "extraction_unavailable", str(exc)) from exc
+    except ModelOutputRejected as exc:
+        raise api_error(502, "extraction_invalid_output", str(exc)) from exc
+    return AnalyzeRead(
+        recognized_license=checked["recognized_license"],
+        creator=checked["creator"],
+        user_supplied_creator=checked["user_supplied_creator"],
+        license_url=checked["license_url"],
+        attribution_instructions=checked["attribution_instructions"],
+        uncertain_fields=checked["uncertain_fields"],
+        evidence=checked["evidence"],
+        review_status=ReviewStatus.MANUAL_REVIEW_REQUIRED,
+        extraction_note="Extraction is a candidate list. It is not a legal conclusion.",
+    )
+
+
+@router.post("/api/analyze", response_model=AnalyzeRead, tags=["extraction"])
+def analyze(payload: AnalyzeRequest) -> AnalyzeRead:
+    return _analyze_text(payload.title, payload.asset_type, payload.creator, payload.source_url, payload.license_text)
+
+
+@router.post("/api/assets/{asset_id}/extractions", response_model=AnalyzeRead, tags=["extraction"])
+def extract_asset(
+    asset_id: UUID,
+    asset_type: str | None = None,
+    connection: sqlite3.Connection = Depends(get_connection),
+) -> AnalyzeRead:
+    asset = get_asset(connection, asset_id)
+    if asset is None:
+        raise not_found("Asset not found.")
+    if not asset.supplied_license_text:
+        raise api_error(409, "missing_source_text", "Add license text before extraction. The source URL is not fetched.")
+    result = _analyze_text(asset.title, asset_type, asset.creator, asset.source_url, asset.supplied_license_text)
+    replace_extraction(
+        connection,
+        asset_id,
+        [item.model_dump() for item in result.evidence],
+        asset.supplied_license_text,
+        asset.source_url,
+    )
+    return result
+
+
+@router.post("/api/assets/{asset_id}/screening", tags=["screening"])
+def screen(asset_id: UUID, connection: sqlite3.Connection = Depends(get_connection)) -> dict:
+    asset = get_asset(connection, asset_id)
+    if asset is None:
+        raise not_found("Asset not found.")
+    project = get_project(connection, asset.project_id)
+    result = screen_asset(
+        asset.model_dump(mode="json"),
+        project.declared_intended_use.value if project else None,
+        list_conditions(connection, asset_id),
+    )
+    set_review_status(connection, asset_id, result["review_status"])
+    asset_payload = asset.model_dump(mode="json")
+    fingerprint = screening_fingerprint(asset_payload, list_conditions(connection, asset_id))
+    save_screening(connection, asset_id, result, fingerprint)
+    result["asset_id"] = str(asset_id)
+    result["saved"] = True
+    result["outdated"] = False
+    return result
+
+
+@router.get("/api/assets/{asset_id}/screening", tags=["screening"])
+def saved_screen(asset_id: UUID, connection: sqlite3.Connection = Depends(get_connection)) -> dict:
+    asset = get_asset(connection, asset_id)
+    if asset is None:
+        raise not_found("Asset not found.")
+    fingerprint = screening_fingerprint(asset.model_dump(mode="json"), list_conditions(connection, asset_id))
+    return get_saved_screening(connection, asset_id, fingerprint)
+
+
+@router.get("/api/assets/{asset_id}/evidence", tags=["extraction"])
+def get_evidence(asset_id: UUID, connection: sqlite3.Connection = Depends(get_connection)) -> list[dict]:
+    rows = list_evidence(connection, asset_id)
+    if rows is None:
+        raise not_found("Asset not found.")
+    return rows
 
 
 @router.delete("/api/assets/{asset_id}", status_code=204, tags=["assets"])
