@@ -65,6 +65,24 @@ def init_db() -> None:
                 verification_status TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS reports (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                generated_at TEXT NOT NULL,
+                report_version INTEGER NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                disclaimer TEXT NOT NULL,
+                markdown TEXT NOT NULL,
+                UNIQUE(project_id, report_version)
+            );
+
+            CREATE TABLE IF NOT EXISTS report_assets (
+                report_id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+                asset_id TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                UNIQUE(report_id, asset_id)
+            );
+
             CREATE TABLE IF NOT EXISTS extracted_conditions (
                 id TEXT PRIMARY KEY,
                 asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -377,6 +395,57 @@ def get_saved_screening(connection: sqlite3.Connection, asset_id: UUID, fingerpr
         "review_status": row["review_status"],
         "summary": row["summary"],
         "rule_results": json.loads(row["rule_results_json"]),
+    }
+
+
+def insert_report(
+    connection: sqlite3.Connection,
+    project_id: UUID,
+    snapshot: dict,
+    disclaimer: str,
+    markdown: str,
+    asset_ids: list[str],
+) -> dict:
+    report_id = str(uuid4())
+    generated_at = _utc_now()
+    version_row = connection.execute(
+        "SELECT COALESCE(MAX(report_version), 0) + 1 AS next_version FROM reports WHERE project_id = ?",
+        (str(project_id),),
+    ).fetchone()
+    version = int(version_row["next_version"])
+    connection.execute(
+        """
+        INSERT INTO reports (id, project_id, generated_at, report_version, snapshot_json, disclaimer, markdown)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (report_id, str(project_id), generated_at, version, json.dumps(snapshot), disclaimer, markdown),
+    )
+    for position, asset_id in enumerate(asset_ids):
+        connection.execute(
+            "INSERT INTO report_assets (report_id, asset_id, position) VALUES (?, ?, ?)",
+            (report_id, asset_id, position),
+        )
+    connection.commit()
+    return get_report(connection, UUID(report_id))
+
+
+def get_report(connection: sqlite3.Connection, report_id: UUID) -> dict | None:
+    row = connection.execute("SELECT * FROM reports WHERE id = ?", (str(report_id),)).fetchone()
+    if row is None:
+        return None
+    asset_rows = connection.execute(
+        "SELECT asset_id FROM report_assets WHERE report_id = ? ORDER BY position ASC",
+        (str(report_id),),
+    ).fetchall()
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "generated_at": row["generated_at"],
+        "included_asset_ids": [item["asset_id"] for item in asset_rows],
+        "report_version": row["report_version"],
+        "snapshot": json.loads(row["snapshot_json"]),
+        "disclaimer": row["disclaimer"],
+        "markdown": row["markdown"],
     }
 
 

@@ -198,6 +198,34 @@ class CheckedEvidence(ApiModel):
     confidence: float | None = None
 
 
+class ReportCreate(ApiModel):
+    asset_types: dict[UUID, str] = Field(default_factory=dict)
+
+    @field_validator("asset_types")
+    @classmethod
+    def asset_types_are_short(cls, value: dict[UUID, str]) -> dict[UUID, str]:
+        cleaned: dict[UUID, str] = {}
+        for asset_id, asset_type in value.items():
+            text = asset_type.strip()
+            if not text:
+                continue
+            if len(text) > 80:
+                raise ValueError("asset type must be 80 characters or fewer")
+            cleaned[asset_id] = text
+        return cleaned
+
+
+class ReportRead(ApiModel):
+    id: UUID
+    project_id: UUID
+    generated_at: datetime
+    included_asset_ids: list[UUID]
+    report_version: int = Field(ge=1)
+    snapshot: dict
+    disclaimer: str
+    markdown: str
+
+
 class AnalyzeRead(ApiModel):
     recognized_license: str
     creator: str | None

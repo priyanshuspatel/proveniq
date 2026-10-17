@@ -17,7 +17,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className={`${sourceSans.variable} antialiased`}>
-        <header className="border-b border-line bg-card">
+        <header className="no-print border-b border-line bg-card">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
             <Link href="/" className="no-underline">
               <p className="text-xl font-semibold tracking-tight">Proveniq</p>

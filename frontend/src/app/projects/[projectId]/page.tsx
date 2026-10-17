@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { EmptyNote, ErrorNote, FieldErrorText, LoadingNote, SuccessNote } from "@/components/Feedback";
-import { ApiError, assetsApi, fieldMessage, projectsApi, type AssetInput } from "@/lib/api";
+import { ApiError, assetsApi, fieldMessage, projectsApi, reportsApi, type AssetInput } from "@/lib/api";
 import { DEMO_EXAMPLES, type DemoExample } from "@/lib/examples";
-import { writeAssetMeta } from "@/lib/storage";
+import { readAssetMeta, writeAssetMeta } from "@/lib/storage";
 import { Asset, INTENDED_USES, IntendedUse, Project, intendedUseLabel, reviewStatusLabel } from "@/lib/types";
 
 const inputClass = "mt-1 w-full rounded-md border border-line bg-white px-3 py-2";
@@ -28,6 +28,10 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportMessage, setReportMessage] = useState<string | null>(null);
+  const [reportHref, setReportHref] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     void params.then((value) => setProjectId(value.projectId));
@@ -107,6 +111,40 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
     }
   }
 
+  async function downloadReport() {
+    if (!projectId || !assets) return;
+    setDownloading(true);
+    setReportError(null);
+    setReportMessage(null);
+    setReportHref(null);
+    try {
+      const assetTypes: Record<string, string> = {};
+      for (const asset of assets) {
+        const assetType = readAssetMeta(asset.id).assetType.trim();
+        if (assetType) assetTypes[asset.id] = assetType;
+      }
+      const report = await reportsApi.create(projectId, assetTypes);
+      if (!report.markdown) {
+        throw new ApiError("The report was not generated.", 0);
+      }
+      const blob = new Blob([report.markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `proveniq-${projectId}-v${report.report_version}.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setReportHref(`/reports/${report.id}`);
+      setReportMessage(`Downloaded proveniq-${projectId}-v${report.report_version}.md.`);
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : "The report could not be downloaded.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (!projectId || (project === null && !loadError)) return <LoadingNote label="Loading project…" />;
 
   return (
@@ -122,9 +160,18 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
                 {project.client_label || "No client label"} · Declared use {intendedUseLabel(project.declared_intended_use)}
               </p>
             </div>
-            <button
-              type="button"
-              className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-900"
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-md bg-indigo px-4 py-2 text-sm text-white disabled:opacity-60"
+                disabled={downloading || assets === null}
+                onClick={() => void downloadReport()}
+              >
+                {downloading ? "Preparing report…" : "Download Markdown Report"}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-900"
               onClick={() => {
                 if (!window.confirm(`Delete “${project.name}” and its assets?`)) return;
                 void projectsApi.remove(project.id).then(() => router.push("/")).catch((deleteError: unknown) => {
@@ -133,8 +180,16 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
               }}
             >
               Delete project
-            </button>
+              </button>
+            </div>
           </div>
+          {reportError ? <div className="mt-4"><ErrorNote message={reportError} /></div> : null}
+          {reportMessage ? (
+            <div className="mt-4">
+              <SuccessNote message={reportMessage} />
+              {reportHref ? <Link href={reportHref} className="mt-2 inline-block text-sm text-indigo">Open the print view</Link> : null}
+            </div>
+          ) : null}
           <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
             <section>
               <h2 className="text-xl font-semibold">Asset inventory</h2>

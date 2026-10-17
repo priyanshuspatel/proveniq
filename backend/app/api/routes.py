@@ -13,18 +13,20 @@ from app.persistence.database import (
     get_asset,
     get_connection,
     get_project,
+    get_report,
     get_saved_screening,
     list_assets,
     list_conditions,
     list_evidence,
     list_projects,
+    replace_extraction,
     save_screening,
     screening_fingerprint,
     set_review_status,
-    replace_extraction,
     update_asset,
     update_project,
 )
+from app.reports.build import create_project_report
 from app.rules.engine import screen_asset
 from app.schemas import (
     AnalyzeRead,
@@ -36,6 +38,8 @@ from app.schemas import (
     ProjectCreate,
     ProjectRead,
     ProjectUpdate,
+    ReportCreate,
+    ReportRead,
     ReviewStatus,
 )
 
@@ -242,6 +246,26 @@ def get_evidence(asset_id: UUID, connection: sqlite3.Connection = Depends(get_co
     if rows is None:
         raise not_found("Asset not found.")
     return rows
+
+
+@router.post("/api/projects/{project_id}/reports", response_model=ReportRead, status_code=201, tags=["reports"])
+def create_report(
+    project_id: UUID,
+    payload: ReportCreate,
+    connection: sqlite3.Connection = Depends(get_connection),
+) -> dict:
+    report = create_project_report(connection, project_id, payload.asset_types)
+    if report is None:
+        raise not_found("Project not found.")
+    return report
+
+
+@router.get("/api/reports/{report_id}", response_model=ReportRead, tags=["reports"])
+def read_report(report_id: UUID, connection: sqlite3.Connection = Depends(get_connection)) -> dict:
+    report = get_report(connection, report_id)
+    if report is None:
+        raise not_found("Report not found.")
+    return report
 
 
 @router.delete("/api/assets/{asset_id}", status_code=204, tags=["assets"])

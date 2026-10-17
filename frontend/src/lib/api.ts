@@ -66,6 +66,23 @@ export type ProjectInput = {
   declared_intended_use: IntendedUse;
 };
 
+export type HandoffReport = {
+  id: string;
+  project_id: string;
+  report_version: number;
+  markdown: string;
+  disclaimer: string;
+};
+
+export const reportsApi = {
+  create: (projectId: string, assetTypes: Record<string, string>) =>
+    request<HandoffReport>(`/api/projects/${projectId}/reports`, {
+      method: "POST",
+      body: JSON.stringify({ asset_types: assetTypes }),
+    }),
+  get: (reportId: string) => request<HandoffReport>(`/api/reports/${reportId}`),
+};
+
 export const projectsApi = {
   list: () => request<Project[]>("/api/projects"),
   get: (projectId: string) => request<Project>(`/api/projects/${projectId}`),
