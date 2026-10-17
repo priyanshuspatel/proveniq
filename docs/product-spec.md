@@ -348,10 +348,13 @@ A domain review status is not an HTTP error. A valid asset with missing attribut
 | `POST /api/projects` | `ProjectCreate` | `201` `ProjectRead` |
 | `GET /api/projects/{project_id}` | — | `200` `ProjectRead` |
 | `GET /api/projects` | — | `200` `list[ProjectRead]` |
+| `PATCH /api/projects/{project_id}` | `ProjectUpdate` | `200` `ProjectRead` |
+| `DELETE /api/projects/{project_id}` | — | `204` |
 | `POST /api/projects/{project_id}/assets` | `AssetCreate` | `201` `AssetRead` |
 | `GET /api/projects/{project_id}/assets` | — | `200` `list[AssetRead]` |
 | `GET /api/assets/{asset_id}` | — | `200` `AssetRead` |
 | `PATCH /api/assets/{asset_id}` | `AssetUpdate` | `200` `AssetRead` |
+| `DELETE /api/assets/{asset_id}` | — | `204` |
 | `POST /api/assets/{asset_id}/extractions` | empty object | `200` `ExtractionRead` |
 | `POST /api/assets/{asset_id}/screening` | empty object | `200` `ScreeningRead` |
 | `GET /api/assets/{asset_id}/evidence` | — | `200` `list[EvidenceRecordRead]` |
