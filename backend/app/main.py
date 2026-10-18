@@ -19,7 +19,7 @@ async def lifespan(_app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="LicenseTrail",
+        title="Proveniq",
         summary="Project and asset records for a source-linked license handoff.",
         version="0.2.0",
         lifespan=lifespan,

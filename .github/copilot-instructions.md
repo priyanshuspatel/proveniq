@@ -1,4 +1,4 @@
-# LicenseTrail
+# Proveniq
 
 Read `docs/product-spec.md` before changing behavior. Implement one phase at a time. Do not add a feature the spec does not describe.
 

@@ -10,7 +10,7 @@ const sourceSans = Source_Sans_3({
 
 export const metadata: Metadata = {
   title: "Proveniq",
-  description: "LicenseTrail desk for declared asset licenses.",
+  description: "Local desk for declared asset licenses. Not a legal clearance.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
             <Link href="/" className="no-underline">
               <p className="text-xl font-semibold tracking-tight">Proveniq</p>
-              <p className="text-sm text-muted">LicenseTrail</p>
+              <p className="text-sm text-muted">Local license desk</p>
             </Link>
             <p className="max-w-xs text-right text-sm text-muted">
               Records declarations and checked quotations. Not a legal clearance.

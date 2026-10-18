@@ -1,12 +1,12 @@
-# LicenseTrail product spec
+# Proveniq product spec
 
 ## Summary
 
-LicenseTrail helps freelance designers and small creative agencies organize digital assets and prepare a source-linked license and attribution report before client delivery.
+Proveniq helps freelance designers and small creative agencies organize digital assets and prepare a source-linked license and attribution report before client delivery.
 
 The report is a rules-based screening packet. It records what the user declared, which quotations were found in the supplied license text, and which checks did not pass. It does not guarantee legal compliance, clearance, or the right to use an asset.
 
-This document is the data contract for the MVP. Application code is not part of this phase.
+This document is the data contract for the local app. The running backend and frontend follow it. The app does not add accounts, URL fetching, or a legal clearance.
 
 ## Users
 
