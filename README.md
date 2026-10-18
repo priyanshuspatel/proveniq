@@ -67,14 +67,18 @@ Opening an asset loads the project, the asset, saved evidence, and the last save
 
 ## Prerequisites
 
-- macOS
-- Python 3.11 or newer (`python3 --version`)
-- Node.js 20 or newer (`node --version`)
+- macOS or Linux
+- Python 3.13 (`.python-version`, `python3 --version`)
+- Node.js 22 (`.nvmrc`, `node --version`)
 - [Ollama](https://ollama.com) for local extraction
 
 No API key is required.
 
-## macOS setup
+The runtime pins and lockfiles are kept in the repository so a clean checkout can be
+rebuilt without global package installs. The commands below assume the shell is at the
+repository root.
+
+## Local setup
 
 From the repository root.
 
@@ -100,7 +104,7 @@ cp .env.example .env.local
 
 `frontend/.env.local` sets `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`. It is gitignored. `frontend/.env.example` is the template and is safe to commit.
 
-Install the model:
+Install the model on macOS:
 
 ```bash
 brew install ollama
@@ -136,9 +140,28 @@ Health checks on the API:
 - `GET /api/health/inference` — local Ollama has the configured model.
 - `GET /api/health` — same response as liveness.
 
-`APP_ENV` is `development`, `test`, or `production`. Production refuses `CORS_ORIGINS=*` and refuses a public Ollama host, even when `OLLAMA_API_KEY` is set: a bearer environment variable is not an authentication proxy. Access logs record the method, path, status, and duration. They do not record license text or the Ollama key. Request bodies and model responses are bounded by configuration.
+`APP_ENV` is `development`, `test`, or `production`. Production refuses `CORS_ORIGINS=*` and refuses a public Ollama host, even when `OLLAMA_API_KEY` is set: a bearer environment variable is not an authentication proxy. Access logs record the method, path, status, and duration. They do not record license text or the Ollama key. Request bodies and model responses are bounded by configuration; `MAX_REQUEST_BODY_BYTES` defaults to 2 MiB and `OLLAMA_MAX_RESPONSE_BYTES` defaults to 1 MiB.
 
-Optional containers are described in [`docs/deployment.md`](docs/deployment.md). They were not deployed from this repository. The frontend image does not contain Gemma weights. Ollama stays on the host.
+## Docker Compose
+
+Docker is an optional reproducible deployment path. It does not download Ollama
+weights; the API reaches Ollama on the host through `host.docker.internal`.
+
+```bash
+docker compose build
+docker compose up
+```
+
+Open `http://127.0.0.1:3000`. Stop the stack with `Ctrl-C`, or use `docker compose
+down` when the processes are no longer needed. The named `proveniq-data` volume holds
+the SQLite database. The frontend API origin is baked into the image at build time via
+the `NEXT_PUBLIC_API_URL` build argument.
+
+The Dockerfiles are also the deployment inputs for `render.yaml`. No deployment is
+claimed from this repository; follow [`docs/deployment.md`](docs/deployment.md) and
+the [`docs/phase-9-checklist.md`](docs/phase-9-checklist.md) with the target account.
+The frontend image does not contain Gemma weights. Ollama stays on a private network
+or behind a real authentication proxy.
 
 If Ollama is not running, extraction returns HTTP 503 `extraction_unavailable`. A timeout returns HTTP 504 `extraction_timeout`. Neither response includes a stack trace. The asset is not given a passing status.
 
