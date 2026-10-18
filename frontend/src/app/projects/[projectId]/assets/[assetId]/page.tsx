@@ -252,7 +252,7 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
       <Card className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionHeading eyebrow="Source of truth" title="User-confirmed fields" description="These are the values used for the saved asset and assessment." />
-          <StatusBadge status={confirmed ? "supported-checks-passed" : null} label={confirmed ? "Confirmed for assessment" : "Needs confirmation"} />
+           <StatusBadge status={null} tone={confirmed ? "teal" : "neutral"} label={confirmed ? "Confirmed for assessment" : "Needs confirmation"} />
         </div>
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={onSave} onChange={markOutdated}>
           <label className="block text-sm font-medium">Title<input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} required /><FieldErrorText message={fieldMessage(formError, "title")} /></label>

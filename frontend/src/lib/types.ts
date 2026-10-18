@@ -53,7 +53,14 @@ export function intendedUseLabel(value: IntendedUse | null): string {
 }
 
 export function reviewStatusLabel(value: ReviewStatus): string {
-  return value.replaceAll("-", " ");
+  const labels: Record<ReviewStatus, string> = {
+    "supported-checks-passed": "Supported checks passed",
+    "potential-conflict": "Potential conflict",
+    "missing-information": "Missing information",
+    "unsupported-license": "Unsupported license",
+    "manual-review-required": "Manual review required",
+  };
+  return labels[value];
 }
 
 export function reviewStatusTone(value: ReviewStatus | null | undefined): "teal" | "amber" | "red" | "neutral" {

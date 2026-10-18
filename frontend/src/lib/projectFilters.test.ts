@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { filterProjects } from "./projectFilters.ts";
-import { reviewStatusTone, type Project } from "./types.ts";
+import { reviewStatusLabel, reviewStatusTone, type Project } from "./types.ts";
 
 const projects: Project[] = [
   { id: "1", name: "Brand refresh", client_label: "Acme", declared_intended_use: "commercial", created_at: "2026-01-01", asset_count: 4, review_status: "supported-checks-passed" },
@@ -25,4 +25,8 @@ test("status tones keep review meaning available beyond color", () => {
   assert.equal(reviewStatusTone("potential-conflict"), "amber");
   assert.equal(reviewStatusTone("manual-review-required"), "red");
   assert.equal(reviewStatusTone(null), "neutral");
+});
+
+test("status labels are readable in headings and reports", () => {
+  assert.equal(reviewStatusLabel("manual-review-required"), "Manual review required");
 });

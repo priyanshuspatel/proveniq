@@ -27,18 +27,18 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <section className={`surface-card ${className}`}>{children}</section>;
 }
 
-export function StatusBadge({ status, label }: { status: ReviewStatus | null | undefined; label?: string }) {
+export function StatusBadge({ status, label, tone }: { status: ReviewStatus | null | undefined; label?: string; tone?: "teal" | "amber" | "red" | "neutral" }) {
   const text = label ?? (status ? reviewStatusLabel(status) : "Not assessed");
-  const tone = reviewStatusTone(status);
+  const resolvedTone = tone ?? reviewStatusTone(status);
   const toneClasses = {
     teal: "status-badge--teal",
     amber: "status-badge--amber",
     red: "status-badge--red",
     neutral: "status-badge--neutral",
   };
-  const symbol = tone === "teal" ? "✓" : tone === "red" ? "!" : tone === "amber" ? "•" : "–";
+  const symbol = resolvedTone === "teal" ? "✓" : resolvedTone === "red" ? "!" : resolvedTone === "amber" ? "•" : "–";
   return (
-    <span className={`status-badge ${toneClasses[tone]}`}>
+    <span className={`status-badge ${toneClasses[resolvedTone]}`}>
       <span aria-hidden="true" className="status-badge__symbol">{symbol}</span>
       <span>{text}</span>
     </span>
