@@ -17,6 +17,9 @@ export type Project = {
   client_label: string | null;
   declared_intended_use: IntendedUse;
   created_at: string;
+  /** Populated by newer API versions; optional for older projects. */
+  asset_count?: number;
+  review_status?: ReviewStatus | null;
 };
 
 export type Asset = {
@@ -51,4 +54,11 @@ export function intendedUseLabel(value: IntendedUse | null): string {
 
 export function reviewStatusLabel(value: ReviewStatus): string {
   return value.replaceAll("-", " ");
+}
+
+export function reviewStatusTone(value: ReviewStatus | null | undefined): "teal" | "amber" | "red" | "neutral" {
+  if (value === "supported-checks-passed") return "teal";
+  if (value === "potential-conflict" || value === "missing-information") return "amber";
+  if (value === "unsupported-license" || value === "manual-review-required") return "red";
+  return "neutral";
 }

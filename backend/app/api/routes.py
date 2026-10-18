@@ -2,9 +2,11 @@ import sqlite3
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.extraction.ollama import ModelOutputRejected, OllamaTimeout, OllamaUnavailable, run_extraction
+from app.health import inference_status
 from app.persistence.database import (
     create_asset,
     create_project,
@@ -19,6 +21,7 @@ from app.persistence.database import (
     list_conditions,
     list_evidence,
     list_projects,
+    list_report_summaries,
     replace_extraction,
     save_screening,
     screening_fingerprint,
@@ -40,6 +43,7 @@ from app.schemas import (
     ProjectUpdate,
     ReportCreate,
     ReportRead,
+    ReportSummaryRead,
     ReviewStatus,
 )
 
@@ -68,6 +72,27 @@ def validation_error(loc: str, message: str) -> HTTPException:
 @router.get("/api/health", response_model=HealthRead, tags=["health"])
 def health() -> HealthRead:
     return HealthRead(status="ok")
+
+
+@router.get("/api/health/live", response_model=HealthRead, tags=["health"])
+def health_live() -> HealthRead:
+    return HealthRead(status="ok")
+
+
+@router.get("/api/health/ready", tags=["health"])
+def health_ready(connection: sqlite3.Connection = Depends(get_connection)) -> JSONResponse:
+    try:
+        connection.execute("SELECT 1").fetchone()
+    except sqlite3.Error:
+        return JSONResponse(status_code=503, content={"status": "unavailable", "code": "database_unavailable"})
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+@router.get("/api/health/inference", tags=["health"])
+def health_inference() -> JSONResponse:
+    body = inference_status(get_settings())
+    status_code = 200 if body.get("status") == "ok" else 503
+    return JSONResponse(status_code=status_code, content=body)
 
 
 @router.post("/api/projects", response_model=ProjectRead, status_code=201, tags=["projects"])
@@ -216,14 +241,15 @@ def screen(asset_id: UUID, connection: sqlite3.Connection = Depends(get_connecti
     if asset is None:
         raise not_found("Asset not found.")
     project = get_project(connection, asset.project_id)
+    project_use = project.declared_intended_use.value if project else None
     result = screen_asset(
         asset.model_dump(mode="json"),
-        project.declared_intended_use.value if project else None,
+        project_use,
         list_conditions(connection, asset_id),
     )
     set_review_status(connection, asset_id, result["review_status"])
     asset_payload = asset.model_dump(mode="json")
-    fingerprint = screening_fingerprint(asset_payload, list_conditions(connection, asset_id))
+    fingerprint = screening_fingerprint(asset_payload, list_conditions(connection, asset_id), project_use)
     save_screening(connection, asset_id, result, fingerprint)
     result["asset_id"] = str(asset_id)
     result["saved"] = True
@@ -236,7 +262,9 @@ def saved_screen(asset_id: UUID, connection: sqlite3.Connection = Depends(get_co
     asset = get_asset(connection, asset_id)
     if asset is None:
         raise not_found("Asset not found.")
-    fingerprint = screening_fingerprint(asset.model_dump(mode="json"), list_conditions(connection, asset_id))
+    project = get_project(connection, asset.project_id)
+    project_use = project.declared_intended_use.value if project else None
+    fingerprint = screening_fingerprint(asset.model_dump(mode="json"), list_conditions(connection, asset_id), project_use)
     return get_saved_screening(connection, asset_id, fingerprint)
 
 
@@ -258,6 +286,17 @@ def create_report(
     if report is None:
         raise not_found("Project not found.")
     return report
+
+
+@router.get("/api/projects/{project_id}/reports", response_model=list[ReportSummaryRead], tags=["reports"])
+def list_project_reports(
+    project_id: UUID,
+    connection: sqlite3.Connection = Depends(get_connection),
+) -> list[dict]:
+    reports = list_report_summaries(connection, project_id)
+    if reports is None:
+        raise not_found("Project not found.")
+    return reports
 
 
 @router.get("/api/reports/{report_id}", response_model=ReportRead, tags=["reports"])

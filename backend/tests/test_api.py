@@ -267,3 +267,45 @@ def test_optional_asset_fields_stay_null(client):
     assert body["attribution_text"] is None
     assert body["declared_license"] == "custom"
     assert body["review_status"] == "manual-review-required"
+
+
+def test_source_snapshot_change_clears_evidence_and_invalidates_screening(client, monkeypatch):
+    from tests.test_extraction import chat, patch_chat, valid_draft
+
+    patch_chat(monkeypatch, [chat(valid_draft())])
+    project = client.post("/api/projects", json=project_payload()).json()
+    asset = client.post(f"/api/projects/{project['id']}/assets", json=asset_payload()).json()
+    assert client.post(f"/api/assets/{asset['id']}/extractions").status_code == 200
+    assert client.post(f"/api/assets/{asset['id']}/screening").status_code == 200
+    assert client.get(f"/api/assets/{asset['id']}/evidence").json()
+
+    changed = client.patch(
+        f"/api/assets/{asset['id']}",
+        json={"supplied_license_text": "A replacement license notice."},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["review_status"] == "manual-review-required"
+    assert client.get(f"/api/assets/{asset['id']}/evidence").json() == []
+
+    saved = client.get(f"/api/assets/{asset['id']}/screening")
+    assert saved.status_code == 200
+    assert saved.json()["saved"] is True
+    assert saved.json()["outdated"] is True
+
+
+def test_source_url_change_clears_url_and_quote_evidence(client, monkeypatch):
+    from tests.test_extraction import chat, patch_chat, valid_draft
+
+    patch_chat(monkeypatch, [chat(valid_draft())])
+    project = client.post("/api/projects", json=project_payload()).json()
+    asset = client.post(f"/api/projects/{project['id']}/assets", json=asset_payload()).json()
+    assert client.post(f"/api/assets/{asset['id']}/extractions").status_code == 200
+    assert client.post(f"/api/assets/{asset['id']}/screening").status_code == 200
+
+    changed = client.patch(
+        f"/api/assets/{asset['id']}",
+        json={"source_url": "https://example.com/replacement"},
+    )
+    assert changed.status_code == 200
+    assert client.get(f"/api/assets/{asset['id']}/evidence").json() == []
+    assert client.get(f"/api/assets/{asset['id']}/screening").json()["outdated"] is True

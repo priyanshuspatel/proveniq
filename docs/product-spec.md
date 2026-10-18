@@ -132,6 +132,8 @@ Server-generated ids are UUID strings. Timestamps are ISO-8601 UTC. Clients cann
 | `client_label` | Optional, 1–200 characters, or null |
 | `declared_intended_use` | Required intended-use value |
 | `created_at` | Server clock, immutable |
+| `asset_count` | Derived count of assets currently in the project |
+| `review_status` | Derived highest-precedence asset status, or null when the project is empty |
 
 ### Asset
 
@@ -359,6 +361,7 @@ A domain review status is not an HTTP error. A valid asset with missing attribut
 | `POST /api/assets/{asset_id}/screening` | empty object | `200` `ScreeningRead` |
 | `GET /api/assets/{asset_id}/evidence` | — | `200` `list[EvidenceRecordRead]` |
 | `POST /api/projects/{project_id}/reports` | empty object | `201` `ReportRead` |
+| `GET /api/projects/{project_id}/reports` | — | `200` `list[ReportSummaryRead]` |
 | `GET /api/reports/{report_id}` | — | `200` `ReportRead` |
 
 `POST` and `PATCH` that change an asset run screening before the response is returned. Extraction persists an evidence row and its condition together, then runs screening. A condition is not stored, and no partial condition from that attempt is kept, when its evidence reference is missing or invalid. A failed model parse still returns `200` with `conditions: []` and `manual-review-required`.

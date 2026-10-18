@@ -18,8 +18,8 @@ class FakeResponse:
     def __exit__(self, *_args):
         return False
 
-    def read(self):
-        return self._raw
+    def read(self, size: int = -1):
+        return self._raw if size < 0 else self._raw[:size]
 
 
 def chat(content) -> str:
@@ -273,3 +273,21 @@ def test_asset_extraction_persists_only_checked_quotes(client, monkeypatch):
     assert "not-authenticated" in statuses
     assert "not-found" not in statuses
     assert client.post(f"/api/assets/{uuid4()}/extractions").status_code == 404
+
+
+def test_oversized_ollama_response_is_rejected_without_echoing_output(monkeypatch):
+    from app.config import Settings
+    from app.extraction.ollama import ModelOutputRejected, request_draft
+
+    secret = "model-output-secret"
+    monkeypatch.setattr(
+        "app.extraction.ollama.request.urlopen",
+        lambda *_args, **_kwargs: FakeResponse(secret + "x" * 100),
+    )
+    settings = Settings(ollama_host="http://127.0.0.1:11434", ollama_max_response_bytes=32)
+
+    with pytest.raises(ModelOutputRejected) as caught:
+        request_draft(settings, "prompt")
+
+    assert "configured limit" in str(caught.value)
+    assert secret not in str(caught.value)

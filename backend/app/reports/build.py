@@ -22,7 +22,7 @@ def create_project_report(connection, project_id: UUID, asset_types: dict[UUID, 
         payload = asset.model_dump(mode="json")
         conditions = list_conditions(connection, asset.id)
         evidence = list_evidence(connection, asset.id) or []
-        fingerprint = screening_fingerprint(payload, conditions)
+        fingerprint = screening_fingerprint(payload, conditions, project.declared_intended_use.value)
         screening = get_saved_screening(connection, asset.id, fingerprint)
         entries.append(
             {

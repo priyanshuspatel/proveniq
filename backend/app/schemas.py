@@ -68,6 +68,8 @@ class ProjectCreate(ApiModel):
 class ProjectRead(ProjectCreate):
     id: UUID
     created_at: datetime
+    asset_count: int = Field(default=0, ge=0)
+    review_status: ReviewStatus | None = None
 
 
 class ProjectUpdate(ApiModel):
@@ -153,7 +155,7 @@ class HealthRead(ApiModel):
 class ErrorBody(ApiModel):
     code: str
     message: str
-    details: list[dict[str, str]] = []
+    details: list[dict[str, str]] = Field(default_factory=list)
 
 
 class AnalyzeRequest(ApiModel):
@@ -171,9 +173,7 @@ class AnalyzeRequest(ApiModel):
     @field_validator("license_text", "creator", "asset_type")
     @classmethod
     def optional_or_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return _blank_to_none(value) if not isinstance(value, str) or value != value.strip() or True else value
+        return _blank_to_none(value)
 
     @field_validator("license_text")
     @classmethod
@@ -224,6 +224,15 @@ class ReportRead(ApiModel):
     snapshot: dict
     disclaimer: str
     markdown: str
+    included_asset_count: int = Field(default=0, ge=0)
+
+
+class ReportSummaryRead(ApiModel):
+    id: UUID
+    project_id: UUID
+    generated_at: datetime
+    report_version: int = Field(ge=1)
+    included_asset_count: int = Field(ge=0)
 
 
 class AnalyzeRead(ApiModel):

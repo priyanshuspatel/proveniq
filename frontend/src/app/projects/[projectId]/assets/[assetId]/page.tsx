@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ErrorNote, FieldErrorText, LoadingNote, SuccessNote } from "@/components/Feedback";
+import { Button, Card, SectionHeading, StatusBadge } from "@/components/ui";
 import { ApiError, assetsApi, fieldMessage, projectsApi, type ExtractionResult, type ScreeningResult } from "@/lib/api";
 import { quotationsFromEvidence, type RestoredQuotation } from "@/lib/restore";
 import { readAssetMeta, readStore, writeAssetMeta } from "@/lib/storage";
 import { Asset, INTENDED_USES, IntendedUse, Project, intendedUseLabel, reviewStatusLabel } from "@/lib/types";
 
-const inputClass = "mt-1 w-full rounded-md border border-line bg-white px-3 py-2";
+const inputClass = "field-control";
 
 export default function AssetPage({ params }: { params: Promise<{ projectId: string; assetId: string }> }) {
   const router = useRouter();
@@ -30,6 +31,7 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [screening, setScreening] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState<ApiError | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
@@ -37,6 +39,31 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
   const [evidenceState, setEvidenceState] = useState<"loading" | "ready" | "error">("loading");
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [assessment, setAssessment] = useState<ScreeningResult | null>(null);
+  const actionLock = useRef(false);
+
+  const busy = saving || analyzing || screening || deleting;
+
+  function currentAssetValues() {
+    return {
+      title,
+      creator: creator.trim() ? creator : null,
+      source_url: sourceUrl.trim() ? sourceUrl : null,
+      declared_license: declaredLicense,
+      supplied_license_text: licenseText.trim() ? licenseText : null,
+      intended_use: intendedUse || null,
+      attribution_text: attribution.trim() ? attribution : null,
+    };
+  }
+
+  function beginAction(): boolean {
+    if (actionLock.current) return false;
+    actionLock.current = true;
+    return true;
+  }
+
+  function endAction() {
+    actionLock.current = false;
+  }
 
   useEffect(() => {
     void params.then(setIds);
@@ -102,20 +129,12 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
 
   async function onSave(event: FormEvent) {
     event.preventDefault();
-    if (!asset) return;
+    if (!asset || busy || !beginAction()) return;
     setSaving(true);
     setFormError(null);
     setSuccess(null);
     try {
-      const updated = await assetsApi.update(asset.id, {
-        title,
-        creator: creator.trim() ? creator : null,
-        source_url: sourceUrl.trim() ? sourceUrl : null,
-        declared_license: declaredLicense,
-        supplied_license_text: licenseText.trim() ? licenseText : null,
-        intended_use: intendedUse || null,
-        attribution_text: attribution.trim() ? attribution : null,
-      });
+      const updated = await assetsApi.update(asset.id, currentAssetValues());
       setAsset(updated);
       writeAssetMeta(updated.id, { assetType, confirmed: false });
       setConfirmed(false);
@@ -125,18 +144,30 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
       setFormError(saveError instanceof ApiError ? saveError : new ApiError("The asset could not be saved.", 0));
     } finally {
       setSaving(false);
+      endAction();
     }
   }
 
   async function onAnalyze() {
-    if (!asset) return;
+    if (!asset || busy || !beginAction()) return;
     setAnalyzing(true);
     setError(null);
-    setAssessment(null);
-    setConfirmed(false);
-    writeAssetMeta(asset.id, { assetType, confirmed: false });
+    setFormError(null);
+    setSuccess(null);
     try {
-      const result = await assetsApi.extract(asset.id, assetType || undefined);
+      // Persist the visible fields before extraction. The extraction endpoint is the
+      // only path that stores evidence, so a preview-only call could otherwise leave
+      // the UI showing quotations that the later assessment could not use.
+      const updated = await assetsApi.update(asset.id, currentAssetValues());
+      setAsset(updated);
+      setExtraction(null);
+      setRestoredQuotes([]);
+      setEvidenceState("ready");
+      setAssessment((current) => (current?.saved ? { ...current, outdated: true } : current));
+      const result = await assetsApi.extract(asset.id, assetType.trim() || undefined);
+      setConfirmed(false);
+      writeAssetMeta(asset.id, { assetType, confirmed: false });
+      setAssessment((current) => (current?.saved ? { ...current, outdated: true } : current));
       setExtraction(result);
       setRestoredQuotes(
         result.evidence.map((item) => ({
@@ -156,23 +187,16 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
       setError(analyzeError instanceof Error ? analyzeError.message : "Analysis failed.");
     } finally {
       setAnalyzing(false);
+      endAction();
     }
   }
 
   async function onConfirm() {
-    if (!asset) return;
+    if (!asset || busy || !beginAction()) return;
     setSaving(true);
     setFormError(null);
     try {
-      const updated = await assetsApi.update(asset.id, {
-        title,
-        creator: creator.trim() ? creator : null,
-        source_url: sourceUrl.trim() ? sourceUrl : null,
-        declared_license: declaredLicense,
-        supplied_license_text: licenseText.trim() ? licenseText : null,
-        intended_use: intendedUse || null,
-        attribution_text: attribution.trim() ? attribution : null,
-      });
+      const updated = await assetsApi.update(asset.id, currentAssetValues());
       setAsset(updated);
       setConfirmed(true);
       writeAssetMeta(updated.id, { assetType, confirmed: true });
@@ -181,11 +205,12 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
       setFormError(confirmError instanceof ApiError ? confirmError : new ApiError("Confirmation could not be saved.", 0));
     } finally {
       setSaving(false);
+      endAction();
     }
   }
 
   async function onScreen() {
-    if (!asset || !confirmed) return;
+    if (!asset || !confirmed || busy || !beginAction()) return;
     setScreening(true);
     setError(null);
     try {
@@ -196,6 +221,7 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
       setError(screenError instanceof Error ? screenError.message : "The assessment could not be run.");
     } finally {
       setScreening(false);
+      endAction();
     }
   }
 
@@ -214,19 +240,19 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
       <div>
         <Link href={`/projects/${project.id}`} className="text-sm text-muted">{project.name}</Link>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">{asset.title}</h1>
-        <p className="mt-3 max-w-3xl rounded-lg bg-indigo-soft px-4 py-3 text-sm text-indigo">
-          {assessment?.saved && assessment.review_status
-            ? `Saved assessment: ${reviewStatusLabel(assessment.review_status)}. A pass means the recorded checks succeeded. It is not a legal clearance.`
-            : "No assessment has been saved for this asset yet."}
-        </p>
+          <div className="mt-3 max-w-3xl rounded-lg border border-indigo/20 bg-indigo-soft px-4 py-3 text-sm text-indigo" role="status" aria-live="polite">
+            {assessment?.saved && assessment.review_status
+              ? <><strong>Saved assessment:</strong> {reviewStatusLabel(assessment.review_status)}. A pass means the recorded checks succeeded; it is not a legal clearance.</>
+              : "No assessment has been saved for this asset yet."}
+          </div>
         {storageWarning ? <div className="mt-3"><ErrorNote message={storageWarning} /></div> : null}
         {error ? <div className="mt-3"><ErrorNote message={error} /></div> : null}
       </div>
 
-      <section className="rounded-lg border border-line bg-card p-6">
+      <Card className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">User-confirmed fields</h2>
-          <span className="rounded-full bg-stone-100 px-3 py-1 text-sm">{confirmed ? "Confirmed for assessment" : "Not confirmed"}</span>
+          <SectionHeading eyebrow="Source of truth" title="User-confirmed fields" description="These are the values used for the saved asset and assessment." />
+          <StatusBadge status={confirmed ? "supported-checks-passed" : null} label={confirmed ? "Confirmed for assessment" : "Needs confirmation"} />
         </div>
         <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={onSave} onChange={markOutdated}>
           <label className="block text-sm font-medium">Title<input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} required /><FieldErrorText message={fieldMessage(formError, "title")} /></label>
@@ -245,20 +271,27 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
           {formError ? <div className="md:col-span-2"><ErrorNote message={formError.message} /></div> : null}
           {success ? <div className="md:col-span-2"><SuccessNote message={success} /></div> : null}
           <div className="flex flex-wrap gap-3 md:col-span-2">
-            <button type="button" disabled={analyzing} onClick={() => void onAnalyze()} className="rounded-md bg-indigo px-4 py-2 text-white disabled:opacity-60">{analyzing ? "Analyzing…" : "Analyze"}</button>
-            <button type="submit" disabled={saving} className="rounded-md border border-line px-4 py-2 disabled:opacity-60">{saving ? "Saving…" : "Save edits"}</button>
-            <button type="button" disabled={saving} onClick={() => void onConfirm()} className="rounded-md border border-indigo px-4 py-2 text-indigo disabled:opacity-60">Confirm fields</button>
-            <button type="button" disabled={!confirmed || screening} onClick={() => void onScreen()} className="rounded-md bg-stone-900 px-4 py-2 text-white disabled:opacity-40">{screening ? "Checking…" : "Run assessment"}</button>
-            <button type="button" className="rounded-md border border-red-300 px-4 py-2 text-red-900" onClick={() => {
-              if (!window.confirm(`Delete “${asset.title}”?`)) return;
-              void assetsApi.remove(asset.id).then(() => router.push(`/projects/${project.id}`));
-            }}>Delete asset</button>
-          </div>
-        </form>
-      </section>
+             <Button type="button" disabled={busy || !licenseText.trim()} busy={analyzing} onClick={() => void onAnalyze()}>{analyzing ? "Analyzing visible fields…" : "Analyze visible fields"}</Button>
+             <Button type="submit" variant="secondary" disabled={busy} busy={saving}>{saving ? "Saving…" : "Save edits"}</Button>
+             <Button type="button" variant="secondary" disabled={busy} onClick={() => void onConfirm()}>Confirm fields</Button>
+             <Button type="button" variant="dark" disabled={!confirmed || busy} busy={screening} onClick={() => void onScreen()}>{screening ? "Checking…" : "Run assessment"}</Button>
+             <Button type="button" variant="danger" disabled={busy} busy={deleting} onClick={() => {
+                if (!window.confirm(`Delete “${asset.title}”?`)) return;
+                setDeleting(true);
+                setError(null);
+                void assetsApi.remove(asset.id)
+                  .then(() => router.push(`/projects/${project.id}`))
+                  .catch((deleteError: unknown) => {
+                    setError(deleteError instanceof Error ? deleteError.message : "The asset could not be deleted.");
+                  })
+                  .finally(() => setDeleting(false));
+             }}>{deleting ? "Deleting asset…" : "Delete asset"}</Button>
+           </div>
+         </form>
+      </Card>
 
-      <section className="rounded-lg border border-indigo/20 bg-card p-6">
-        <h2 className="text-xl font-semibold">AI-extracted fields</h2>
+       <Card className="border-indigo/20 p-6">
+         <SectionHeading eyebrow="Assistive extraction" title="AI-extracted fields" description="Candidates come from the notice text you supplied. Review quotations before saving or confirming anything." />
         <p className="mt-2 text-sm text-muted">These values come from Gemma and are kept only with a quotation found in the notice. They are not confirmed until you save them above.</p>
         {evidenceState === "loading" ? <div className="mt-4"><LoadingNote label="Loading saved evidence…" /></div> : null}
         {evidenceState === "error" ? <div className="mt-4"><ErrorNote message={evidenceError || "Saved evidence could not be loaded."} /></div> : null}
@@ -287,16 +320,19 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
             </ul>
           </div>
         ) : null}
-      </section>
+       </Card>
 
-      <section className="rounded-lg border border-line bg-card p-6">
-        <h2 className="text-xl font-semibold">Rule-engine results</h2>
+       <Card className="p-6">
+         <div className="flex flex-wrap items-start justify-between gap-3">
+           <SectionHeading eyebrow="Recorded checks" title="Rule-engine results" description="A saved result describes the checks run against the confirmed fields." />
+           {assessment?.saved ? <StatusBadge status={assessment.review_status} /> : null}
+         </div>
         {!assessment?.saved ? (
           <p className="mt-3 text-muted">{confirmed ? "Run the assessment when the confirmed fields look right." : "Confirm the fields before the assessment runs. Nothing has been assessed yet."}</p>
         ) : (
           <div className="mt-4 space-y-4">
-            {assessment.outdated ? <ErrorNote message="These explanations were saved before the fields or evidence changed. Run the assessment again. They are not a new result." /> : null}
-            <p className="text-lg font-medium">{assessment.review_status ? reviewStatusLabel(assessment.review_status) : "No status"}</p>
+             {assessment.outdated ? <ErrorNote message="Stale assessment: fields or evidence changed after these checks. Confirm the current fields and run the assessment again to reload a current result." /> : null}
+             <p className="text-lg font-semibold">{assessment.review_status ? reviewStatusLabel(assessment.review_status) : "No status"}</p>
             <p>{assessment.summary}</p>
             <ul className="space-y-3">
               {assessment.rule_results.filter((rule) => rule.outcome !== "pass").map((rule) => (
@@ -309,7 +345,7 @@ export default function AssetPage({ params }: { params: Promise<{ projectId: str
             {assessment.rule_results.every((rule) => rule.outcome === "pass") ? <p className="text-sm text-muted">Every recorded check passed. Unscreened rights can still remain.</p> : null}
           </div>
         )}
-      </section>
+       </Card>
       <p className="text-sm text-muted">Intended use on this asset: {intendedUseLabel(asset.intended_use)}. Project use: {intendedUseLabel(project.declared_intended_use)}.</p>
     </div>
   );

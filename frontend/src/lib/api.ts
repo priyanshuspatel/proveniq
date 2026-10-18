@@ -69,9 +69,20 @@ export type ProjectInput = {
 export type HandoffReport = {
   id: string;
   project_id: string;
+  generated_at?: string;
   report_version: number;
   markdown: string;
   disclaimer: string;
+  included_asset_ids?: string[];
+  included_asset_count?: number;
+};
+
+export type ReportSummary = {
+  id: string;
+  project_id: string;
+  generated_at: string;
+  report_version: number;
+  included_asset_count: number;
 };
 
 export const reportsApi = {
@@ -81,6 +92,7 @@ export const reportsApi = {
       body: JSON.stringify({ asset_types: assetTypes }),
     }),
   get: (reportId: string) => request<HandoffReport>(`/api/reports/${reportId}`),
+  list: (projectId: string) => request<ReportSummary[]>(`/api/projects/${projectId}/reports`),
 };
 
 export const projectsApi = {
@@ -117,6 +129,15 @@ export const assetsApi = {
     return request<ExtractionResult>(`/api/assets/${assetId}/extractions${query}`, { method: "POST" });
   },
   screen: (assetId: string) => request<ScreeningResult>(`/api/assets/${assetId}/screening`, { method: "POST" }),
+  analyze: (body: AnalyzeRequest) => request<ExtractionResult>("/api/analyze", { method: "POST", body: JSON.stringify(body) }),
+};
+
+export type AnalyzeRequest = {
+  title: string;
+  asset_type?: string | null;
+  creator?: string | null;
+  source_url?: string | null;
+  license_text: string;
 };
 
 export type ExtractionEvidence = {

@@ -1,0 +1,27 @@
+services:
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: production
+      DATABASE_PATH: /data/licensetrail.db
+      CORS_ORIGINS: http://127.0.0.1:3000
+      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_MODEL: gemma2:2b
+      OLLAMA_TIMEOUT_SECONDS: "60"
+      REQUEST_TIMEOUT_SECONDS: "150"
+    volumes:
+      - proveniq-data:/data
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  proveniq-data:

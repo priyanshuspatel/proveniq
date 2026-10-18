@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { EmptyNote, ErrorNote, FieldErrorText, LoadingNote, SuccessNote } from "@/components/Feedback";
+import { Button, Card, SectionHeading, StatusBadge } from "@/components/ui";
 import { ApiError, assetsApi, fieldMessage, projectsApi, reportsApi, type AssetInput } from "@/lib/api";
 import { reportFilename, saveGeneratedReport, writeMarkdownInBrowser } from "@/lib/download";
 import { DEMO_EXAMPLES, type DemoExample } from "@/lib/examples";
 import { readAssetMeta, writeAssetMeta } from "@/lib/storage";
 import { Asset, INTENDED_USES, IntendedUse, Project, intendedUseLabel, reviewStatusLabel } from "@/lib/types";
 
-const inputClass = "mt-1 w-full rounded-md border border-line bg-white px-3 py-2";
+const inputClass = "field-control";
 
 export default function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   const router = useRouter();
@@ -33,6 +34,10 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
   const [reportMessage, setReportMessage] = useState<string | null>(null);
   const [reportHref, setReportHref] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [reportHistory, setReportHistory] = useState<Awaited<ReturnType<typeof reportsApi.list>> | null>(null);
+  const [reportHistoryLoading, setReportHistoryLoading] = useState(true);
+  const [reportHistoryError, setReportHistoryError] = useState<string | null>(null);
 
   useEffect(() => {
     void params.then((value) => setProjectId(value.projectId));
@@ -51,6 +56,16 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
         if (!cancelled) {
           setProject(nextProject);
           setAssets(nextAssets);
+        }
+        setReportHistoryLoading(true);
+        setReportHistoryError(null);
+        try {
+          const reports = await reportsApi.list(projectId as string);
+          if (!cancelled) setReportHistory(reports);
+        } catch (reportError) {
+          if (!cancelled) setReportHistoryError(reportError instanceof Error ? reportError.message : "Report history could not be loaded.");
+        } finally {
+          if (!cancelled) setReportHistoryLoading(false);
         }
       } catch (error) {
         if (!cancelled) {
@@ -130,6 +145,12 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
         reportFilename(projectId, report.report_version),
         writeMarkdownInBrowser,
       );
+      try {
+        setReportHistory(await reportsApi.list(projectId));
+        setReportHistoryError(null);
+      } catch {
+        // The generated report is still usable when the optional history refresh fails.
+      }
       setReportHref(`/reports/${report.id}`);
       setReportMessage(`Downloaded ${filename}.`);
     } catch (error) {
@@ -148,33 +169,38 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
       {project ? (
         <>
           <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">{project.name}</h1>
+              <div>
+                <p className="eyebrow">Project workspace</p>
+                <h1 className="text-3xl font-semibold tracking-tight">{project.name}</h1>
               <p className="mt-2 text-muted">
                 {project.client_label || "No client label"} · Declared use {intendedUseLabel(project.declared_intended_use)}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded-md bg-indigo px-4 py-2 text-sm text-white disabled:opacity-60"
-                disabled={downloading || assets === null}
-                onClick={() => void downloadReport()}
-              >
-                {downloading ? "Preparing report…" : "Download Markdown Report"}
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-900"
-              onClick={() => {
-                if (!window.confirm(`Delete “${project.name}” and its assets?`)) return;
-                void projectsApi.remove(project.id).then(() => router.push("/")).catch((deleteError: unknown) => {
-                  setLoadError(deleteError instanceof Error ? deleteError.message : "The project could not be deleted.");
-                });
-              }}
-            >
-              Delete project
-              </button>
+               <Button
+                 type="button"
+                 className="w-full sm:w-auto"
+                 disabled={downloading || assets === null}
+                 busy={downloading}
+                 onClick={() => void downloadReport()}
+               >
+                  {downloading ? "Preparing report…" : "Download Markdown report"}
+               </Button>
+               <Button
+                 type="button"
+                 variant="danger"
+                  disabled={deleting || downloading}
+                  busy={deleting}
+                  onClick={() => {
+                 if (!window.confirm(`Delete “${project.name}” and its assets?`)) return;
+                 setDeleting(true);
+                 void projectsApi.remove(project.id).then(() => router.push("/")).catch((deleteError: unknown) => {
+                   setLoadError(deleteError instanceof Error ? deleteError.message : "The project could not be deleted.");
+                 }).finally(() => setDeleting(false));
+               }}
+               >
+                  {deleting ? "Deleting project…" : "Delete project"}
+               </Button>
             </div>
           </div>
           {reportError ? <div className="mt-4"><ErrorNote message={reportError} /></div> : null}
@@ -186,35 +212,36 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
           ) : null}
           <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
             <section>
-              <h2 className="text-xl font-semibold">Asset inventory</h2>
+              <SectionHeading eyebrow="What you are handing off" title="Asset inventory" description={assets ? `${assets.length} ${assets.length === 1 ? "asset" : "assets"} in this project` : "Loading the project assets"} />
               <div className="mt-4">
                 {assets === null ? <LoadingNote label="Loading assets…" /> : null}
                 {assets && assets.length === 0 ? (
                   <EmptyNote title="No assets yet" body="Add a file with the form. Nothing is saved until you do." />
                 ) : null}
                 {assets && assets.length > 0 ? (
-                  <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-card">
-                    {assets.map((asset) => (
-                      <li key={asset.id}>
-                        <Link href={`/projects/${project.id}/assets/${asset.id}`} className="block px-5 py-4 no-underline hover:bg-indigo-soft">
-                          <span className="text-lg font-medium">{asset.title}</span>
-                          <span className="mt-1 block text-sm text-muted">
-                            {asset.declared_license} · {reviewStatusLabel(asset.review_status)}
-                          </span>
-                        </Link>
+                   <ul className="grid gap-3">
+                     {assets.map((asset) => (
+                       <li key={asset.id}>
+                         <Link href={`/projects/${project.id}/assets/${asset.id}`} className="surface-card block p-5 no-underline transition hover:border-indigo hover:shadow-md">
+                           <div className="flex flex-wrap items-start justify-between gap-3">
+                             <span className="min-w-0 text-lg font-semibold">{asset.title}</span>
+                             <StatusBadge status={asset.review_status} />
+                           </div>
+                           <span className="mt-2 block break-words text-sm text-muted">{asset.declared_license} · {reviewStatusLabel(asset.review_status)}</span>
+                         </Link>
                       </li>
                     ))}
                   </ul>
                 ) : null}
               </div>
             </section>
-            <section className="h-fit rounded-lg border border-line bg-card p-6">
-              <h2 className="text-xl font-semibold">Add asset</h2>
+             <Card className="h-fit p-6">
+               <SectionHeading eyebrow="Build the record" title="Add asset" description="Paste the license notice you have. Nothing is inferred from the source URL." />
               <div className="mt-4 space-y-2">
                 <p className="text-sm font-medium">Examples</p>
                 <div className="flex flex-wrap gap-2">
                   {DEMO_EXAMPLES.map((example) => (
-                    <button key={example.id} type="button" className="rounded-full border border-indigo/30 bg-indigo-soft px-3 py-1 text-sm text-indigo" onClick={() => applyExample(example)}>
+                     <button key={example.id} type="button" className="rounded-full border border-indigo/30 bg-indigo-soft px-3 py-1 text-sm font-semibold text-indigo hover:border-indigo" onClick={() => applyExample(example)}>
                       {example.label}
                     </button>
                   ))}
@@ -236,11 +263,34 @@ export default function ProjectPage({ params }: { params: Promise<{ projectId: s
                 </label>
                 {formError ? <ErrorNote message={formError.message} /> : null}
                 {success ? <SuccessNote message={success} /> : null}
-                <button type="submit" disabled={submitting} className="rounded-md bg-indigo px-4 py-2 text-white disabled:opacity-60">{submitting ? "Saving…" : "Add asset"}</button>
-              </form>
-            </section>
-          </div>
-        </>
+                 <Button type="submit" disabled={submitting} busy={submitting}>{submitting ? "Saving asset…" : "Add asset"}</Button>
+               </form>
+             </Card>
+           </div>
+           <section className="mt-8">
+             <SectionHeading eyebrow="A durable trail" title="Report history" description="Open a previous handoff report to print or save it again." />
+             <div className="mt-4">
+               {reportHistoryLoading ? <LoadingNote label="Loading report history…" /> : null}
+               {reportHistoryError ? <ErrorNote message={reportHistoryError} /> : null}
+               {!reportHistoryLoading && !reportHistoryError && reportHistory?.length === 0 ? <EmptyNote title="No reports yet" body="Generate a Markdown report when the asset records are ready. Previous versions will appear here." /> : null}
+               {reportHistory && reportHistory.length > 0 ? (
+                 <div className="surface-card overflow-hidden">
+                   <ul className="divide-y divide-line">
+                     {reportHistory.map((report) => (
+                       <li key={report.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                         <div>
+                           <p className="font-semibold">Report v{report.report_version}</p>
+                           <p className="mt-1 text-sm text-muted">{new Date(report.generated_at).toLocaleString()} · {report.included_asset_count} {report.included_asset_count === 1 ? "asset" : "assets"} included</p>
+                         </div>
+                         <Link href={`/reports/${report.id}`} className="text-sm font-semibold text-indigo hover:underline">Open report <span aria-hidden="true">→</span></Link>
+                       </li>
+                     ))}
+                   </ul>
+                 </div>
+               ) : null}
+             </div>
+           </section>
+         </>
       ) : null}
     </div>
   );

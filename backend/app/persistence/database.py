@@ -8,12 +8,20 @@ from app.config import get_settings
 from app.schemas import AssetCreate, AssetRead, AssetUpdate, ProjectCreate, ProjectRead, ProjectUpdate, ReviewStatus
 
 PHASE_REVIEW_STATUS = ReviewStatus.MANUAL_REVIEW_REQUIRED
+REVIEW_STATUS_PRECEDENCE = (
+    ReviewStatus.UNSUPPORTED_LICENSE.value,
+    ReviewStatus.POTENTIAL_CONFLICT.value,
+    ReviewStatus.MISSING_INFORMATION.value,
+    ReviewStatus.MANUAL_REVIEW_REQUIRED.value,
+    ReviewStatus.SUPPORTED_CHECKS_PASSED.value,
+)
 
 
 def connect() -> sqlite3.Connection:
     settings = get_settings()
-    settings.database_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(settings.database_path, check_same_thread=False)
+    database_path = settings.sqlite_database_path()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(database_path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
@@ -103,13 +111,28 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _project_from_row(row: sqlite3.Row) -> ProjectRead:
+def _project_summary(connection: sqlite3.Connection, project_id: str) -> tuple[int, str | None]:
+    rows = connection.execute(
+        "SELECT review_status FROM assets WHERE project_id = ? ORDER BY created_at ASC",
+        (project_id,),
+    ).fetchall()
+    if not rows:
+        return 0, None
+    statuses = {row["review_status"] for row in rows}
+    current_status = next((status for status in REVIEW_STATUS_PRECEDENCE if status in statuses), None)
+    return len(rows), current_status
+
+
+def _project_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> ProjectRead:
+    asset_count, review_status = _project_summary(connection, row["id"])
     return ProjectRead(
         id=UUID(row["id"]),
         name=row["name"],
         client_label=row["client_label"],
         declared_intended_use=row["declared_intended_use"],
         created_at=datetime.fromisoformat(row["created_at"]),
+        asset_count=asset_count,
+        review_status=review_status,
     )
 
 
@@ -140,19 +163,19 @@ def create_project(connection: sqlite3.Connection, payload: ProjectCreate) -> Pr
     )
     connection.commit()
     row = connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
-    return _project_from_row(row)
+    return _project_from_row(connection, row)
 
 
 def list_projects(connection: sqlite3.Connection) -> list[ProjectRead]:
     rows = connection.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
-    return [_project_from_row(row) for row in rows]
+    return [_project_from_row(connection, row) for row in rows]
 
 
 def get_project(connection: sqlite3.Connection, project_id: UUID) -> ProjectRead | None:
     row = connection.execute("SELECT * FROM projects WHERE id = ?", (str(project_id),)).fetchone()
     if row is None:
         return None
-    return _project_from_row(row)
+    return _project_from_row(connection, row)
 
 
 def create_asset(connection: sqlite3.Connection, project_id: UUID, payload: AssetCreate) -> AssetRead | None:
@@ -210,6 +233,21 @@ def update_asset(connection: sqlite3.Connection, asset_id: UUID, payload: AssetU
     changes = payload.model_dump(exclude_unset=True)
     if "intended_use" in changes and changes["intended_use"] is not None:
         changes["intended_use"] = changes["intended_use"].value
+    screening_inputs_changed = any(
+        field in changes and changes[field] != current[field]
+        for field in (
+            "declared_license",
+            "supplied_license_text",
+            "source_url",
+            "intended_use",
+            "creator",
+            "attribution_text",
+        )
+    )
+    provenance_changed = any(
+        field in changes and changes[field] != current[field]
+        for field in ("supplied_license_text", "source_url")
+    )
     assignments = []
     values: list[object] = []
     for field, value in changes.items():
@@ -221,6 +259,14 @@ def update_asset(connection: sqlite3.Connection, asset_id: UUID, payload: AssetU
             f"UPDATE assets SET {', '.join(assignments)} WHERE id = ?",
             values,
         )
+    if provenance_changed:
+        clear_extraction(connection, asset_id)
+    if screening_inputs_changed:
+        connection.execute(
+            "UPDATE assets SET review_status = ? WHERE id = ?",
+            (PHASE_REVIEW_STATUS.value, str(asset_id)),
+        )
+    if assignments or screening_inputs_changed:
         connection.commit()
     row = connection.execute("SELECT * FROM assets WHERE id = ?", (str(asset_id),)).fetchone()
     return _asset_from_row(row)
@@ -233,6 +279,11 @@ def update_project(connection: sqlite3.Connection, project_id: UUID, payload: Pr
     changes = payload.model_dump(exclude_unset=True)
     if "declared_intended_use" in changes and changes["declared_intended_use"] is not None:
         changes["declared_intended_use"] = changes["declared_intended_use"].value
+    project_use_changed = (
+        "declared_intended_use" in changes
+        and changes["declared_intended_use"] is not None
+        and changes["declared_intended_use"] != current["declared_intended_use"]
+    )
     assignments = []
     values: list[object] = []
     for field, value in changes.items():
@@ -241,9 +292,15 @@ def update_project(connection: sqlite3.Connection, project_id: UUID, payload: Pr
     if assignments:
         values.append(str(project_id))
         connection.execute(f"UPDATE projects SET {', '.join(assignments)} WHERE id = ?", values)
+    if project_use_changed:
+        connection.execute(
+            "UPDATE assets SET review_status = ? WHERE project_id = ?",
+            (PHASE_REVIEW_STATUS.value, str(project_id)),
+        )
+    if assignments or project_use_changed:
         connection.commit()
     row = connection.execute("SELECT * FROM projects WHERE id = ?", (str(project_id),)).fetchone()
-    return _project_from_row(row)
+    return _project_from_row(connection, row)
 
 
 def delete_project(connection: sqlite3.Connection, project_id: UUID) -> bool:
@@ -259,8 +316,7 @@ def delete_asset(connection: sqlite3.Connection, asset_id: UUID) -> bool:
 
 
 def replace_extraction(connection: sqlite3.Connection, asset_id: UUID, rows: list[dict], source_text: str, source_url: str | None) -> None:
-    connection.execute("DELETE FROM extracted_conditions WHERE asset_id = ?", (str(asset_id),))
-    connection.execute("DELETE FROM evidence_records WHERE asset_id = ?", (str(asset_id),))
+    clear_extraction(connection, asset_id)
     if source_url:
         connection.execute(
             """
@@ -304,6 +360,12 @@ def replace_extraction(connection: sqlite3.Connection, asset_id: UUID, rows: lis
     connection.commit()
 
 
+def clear_extraction(connection: sqlite3.Connection, asset_id: UUID) -> None:
+    """Remove model-derived evidence before a source snapshot is replaced or invalidated."""
+    connection.execute("DELETE FROM extracted_conditions WHERE asset_id = ?", (str(asset_id),))
+    connection.execute("DELETE FROM evidence_records WHERE asset_id = ?", (str(asset_id),))
+
+
 def list_conditions(connection: sqlite3.Connection, asset_id: UUID) -> list[dict]:
     rows = connection.execute(
         "SELECT * FROM extracted_conditions WHERE asset_id = ? ORDER BY rowid",
@@ -335,7 +397,7 @@ def list_evidence(connection: sqlite3.Connection, asset_id: UUID) -> list[dict] 
     return [dict(row) for row in rows]
 
 
-def screening_fingerprint(asset: dict, conditions: list[dict]) -> str:
+def screening_fingerprint(asset: dict, conditions: list[dict], project_use: str | None = None) -> str:
     payload = {
         "declared_license": asset.get("declared_license"),
         "supplied_license_text": asset.get("supplied_license_text"),
@@ -343,6 +405,7 @@ def screening_fingerprint(asset: dict, conditions: list[dict]) -> str:
         "intended_use": asset.get("intended_use"),
         "creator": asset.get("creator"),
         "attribution_text": asset.get("attribution_text"),
+        "project_intended_use": project_use,
         "conditions": [
             (
                 row.get("condition_type"),
@@ -446,7 +509,35 @@ def get_report(connection: sqlite3.Connection, report_id: UUID) -> dict | None:
         "snapshot": json.loads(row["snapshot_json"]),
         "disclaimer": row["disclaimer"],
         "markdown": row["markdown"],
+        "included_asset_count": len(asset_rows),
     }
+
+
+def list_report_summaries(connection: sqlite3.Connection, project_id: UUID) -> list[dict] | None:
+    if get_project(connection, project_id) is None:
+        return None
+    rows = connection.execute(
+        """
+        SELECT reports.id, reports.project_id, reports.generated_at, reports.report_version,
+               COUNT(report_assets.asset_id) AS included_asset_count
+        FROM reports
+        LEFT JOIN report_assets ON report_assets.report_id = reports.id
+        WHERE reports.project_id = ?
+        GROUP BY reports.id
+        ORDER BY reports.report_version DESC
+        """,
+        (str(project_id),),
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "generated_at": row["generated_at"],
+            "report_version": row["report_version"],
+            "included_asset_count": row["included_asset_count"],
+        }
+        for row in rows
+    ]
 
 
 def get_connection() -> Iterator[sqlite3.Connection]:

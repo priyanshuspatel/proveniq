@@ -18,7 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className={`${sourceSans.variable} antialiased`}>
         <header className="no-print border-b border-line bg-card">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-5">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-4 sm:px-6 sm:py-5">
             <Link href="/" className="no-underline">
               <p className="text-xl font-semibold tracking-tight">Proveniq</p>
               <p className="text-sm text-muted">Local license desk</p>
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </p>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
+         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
       </body>
     </html>
   );

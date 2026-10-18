@@ -88,7 +88,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`.env` holds only a local database path, CORS origins, and the local Ollama address. Do not put secrets in it. It is gitignored. The default database file is `backend/data/licensetrail.db`. That filename is kept so an existing local database still opens. The file stays out of Git.
+`.env` holds only a local database path, CORS origins, and the local Ollama address. Do not put secrets in it. It is gitignored. The default database file is `backend/data/licensetrail.db`. That filename is kept so an existing local database still opens. The file stays out of Git. Leave `DATABASE_URL` unset. A `postgresql://` URL is refused at startup and is not connected. The queries use SQLite (`PRAGMA foreign_keys`, `ON CONFLICT`). Moving to Postgres would need a new driver and rewritten SQL, which is not implemented.
 
 Frontend, in a second terminal:
 
@@ -129,6 +129,17 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 
 Dashboard: `http://127.0.0.1:3000`.
 
+Health checks on the API:
+
+- `GET /api/health/live` — the process is up.
+- `GET /api/health/ready` — SQLite answers.
+- `GET /api/health/inference` — local Ollama has the configured model.
+- `GET /api/health` — same response as liveness.
+
+`APP_ENV` is `development`, `test`, or `production`. Production refuses `CORS_ORIGINS=*` and refuses a public Ollama host, even when `OLLAMA_API_KEY` is set: a bearer environment variable is not an authentication proxy. Access logs record the method, path, status, and duration. They do not record license text or the Ollama key. Request bodies and model responses are bounded by configuration.
+
+Optional containers are described in [`docs/deployment.md`](docs/deployment.md). They were not deployed from this repository. The frontend image does not contain Gemma weights. Ollama stays on the host.
+
 If Ollama is not running, extraction returns HTTP 503 `extraction_unavailable`. A timeout returns HTTP 504 `extraction_timeout`. Neither response includes a stack trace. The asset is not given a passing status.
 
 ## How inference and the rules differ
@@ -142,6 +153,15 @@ The rule engine does not see the model’s prose. It compares the declared licen
 A pass still leaves trademarks, patents, moral rights, and third-party rights unscreened. CC0 can pass only inside those checks, and the report says so.
 
 ## Tests
+
+From the repository root, after installing the backend and frontend dependencies:
+
+```bash
+make test
+```
+
+This runs both offline suites without starting Ollama. The individual commands below
+are useful when iterating on one side of the application.
 
 ```bash
 cd backend
@@ -217,7 +237,7 @@ The held-out creator recall is four names that use “Created by”, “Photogra
 - Attribution screening does not check the full CC BY 4.0 credit elements.
 - NonCommercial and NoDerivatives screening compare the use selected in the form. They do not decide those legal questions.
 - Asset type lives in browser storage. Clearing that storage clears the type. The server copy of the asset remains.
-- There is no login, no multi-user separation, and no deployment target. The SQLite file on this machine is the database.
+- There is no login, no multi-user separation, and no ownership scope. Anyone who can reach a deployed API can read or change its projects and reports. Treat the hosted configuration as a single-operator demo until an authentication and ownership layer is added.
 - The three buttons on the add-asset form are labelled examples. They are not assessments of real files.
 - `npm audit` reports five high findings in the development ESLint chain: `eslint-config-next@15.5.28` through `fast-glob`, `micromatch@4.0.8`, and `braces@3.0.3`. Production dependencies (`npm audit --omit=dev`) reported none. There is no compatible Next.js 15 patch. `npm audit fix --force` would downgrade ESLint config to Next.js 14 and should not be used. The risk is a local lint-time denial of service from a deeply nested pattern, not the running server.
 

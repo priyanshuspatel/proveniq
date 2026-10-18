@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.config import Settings
 from app.extraction.analyze import analyze_draft
 from app.extraction.draft import ExtractionDraft, draft_json_schema
+from app.health import ResponseTooLarge, ollama_headers, read_bounded_response
 
 
 class OllamaUnavailable(Exception):
@@ -78,10 +79,17 @@ def request_draft(settings: Settings, prompt: str) -> ExtractionDraft:
     }
     body = json.dumps(payload).encode()
     url = settings.ollama_host.rstrip("/") + "/api/chat"
-    req = request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    headers.update(ollama_headers(settings))
+    req = request.Request(url, data=body, headers=headers)
     try:
         with request.urlopen(req, timeout=settings.ollama_timeout_seconds) as response:
-            raw = response.read().decode()
+            try:
+                raw = read_bounded_response(response, settings.ollama_max_response_bytes).decode()
+            except ResponseTooLarge as exc:
+                raise ModelOutputRejected("Ollama returned a response larger than the configured limit.") from exc
+            except UnicodeDecodeError as exc:
+                raise ModelOutputRejected("Ollama returned a response with invalid encoding.") from exc
     except error.URLError as exc:
         if isinstance(exc.reason, (TimeoutError, socket.timeout)):
             raise OllamaTimeout("Ollama did not respond before the timeout.") from exc

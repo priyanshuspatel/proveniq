@@ -2,12 +2,13 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/restore.test.ts src/lib/download.test.ts",
+    "test": "node --experimental-strip-types --test src/lib/restore.test.ts src/lib/download.test.ts src/lib/projectFilters.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

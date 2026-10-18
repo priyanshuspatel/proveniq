@@ -61,7 +61,13 @@ def _store_quote(asset_id: str, quotation: str, condition_type: str = "license-l
 
 def test_complete_asset_report_includes_verified_license_url_and_disclaimer(client):
     project = _project(client)
+    initial = client.get(f"/api/projects/{project['id']}").json()
+    assert initial["asset_count"] == 0
+    assert initial["review_status"] is None
     asset = _asset(client, project["id"])
+    current = client.get(f"/api/projects/{project['id']}").json()
+    assert current["asset_count"] == 1
+    assert current["review_status"] == "manual-review-required"
     quote = asset["supplied_license_text"]
     _store_quote(asset["id"], quote)
     screened = client.post(f"/api/assets/{asset['id']}/screening")
@@ -84,6 +90,28 @@ def test_complete_asset_report_includes_verified_license_url_and_disclaimer(clie
     fetched = client.get(f"/api/reports/{created.json()['id']}")
     assert fetched.json()["markdown"] == markdown
     assert fetched.json()["report_version"] == 1
+    assert fetched.json()["included_asset_count"] == 1
+
+
+def test_project_report_history_has_real_summary_fields(client):
+    project = _project(client)
+    _asset(client, project["id"])
+    first = client.post(f"/api/projects/{project['id']}/reports", json={}).json()
+    second = client.post(f"/api/projects/{project['id']}/reports", json={}).json()
+
+    history = client.get(f"/api/projects/{project['id']}/reports")
+    assert history.status_code == 200
+    summaries = history.json()
+    assert [item["report_version"] for item in summaries] == [2, 1]
+    assert all(item["included_asset_count"] == 1 for item in summaries)
+    assert all(item["generated_at"] for item in summaries)
+    assert summaries[0]["generated_at"] == second["generated_at"]
+    assert summaries[1]["generated_at"] == first["generated_at"]
+
+
+def test_project_report_history_unknown_project_is_not_found(client):
+    missing = client.get("/api/projects/00000000-0000-4000-8000-000000000000/reports")
+    assert missing.status_code == 404
 
 
 def test_missing_fields_are_not_invented(client):

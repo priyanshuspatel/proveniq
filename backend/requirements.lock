@@ -1,0 +1,8 @@
+# Application and test dependency lock for the Python 3.13 runtime.
+# Keep this file in sync with requirements.txt; Docker and clean installs use it.
+fastapi==0.143.5
+uvicorn==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+httpx==0.28.1
+pytest==9.1.1
