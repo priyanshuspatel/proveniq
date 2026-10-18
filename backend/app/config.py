@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str | None = None
     app_env: str = "development"
     cors_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
+    proveniq_access_token: str = Field(min_length=1, repr=False)
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "gemma2:2b"
     ollama_timeout_seconds: float = Field(default=60, gt=0, le=600)
@@ -53,6 +54,8 @@ class Settings(BaseSettings):
         return value
 
     def validate_runtime(self) -> None:
+        if not self.proveniq_access_token.strip():
+            raise RuntimeError("PROVENIQ_ACCESS_TOKEN must be configured.")
         environment = self.normalized_env()
         origins = self.cors_origin_list
         if not origins or any(origin == "*" for origin in origins):
@@ -81,4 +84,12 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    try:
+        return Settings()
+    except ValidationError as exc:
+        if any(
+            error.get("loc") == ("proveniq_access_token",) and error.get("type") == "missing"
+            for error in exc.errors()
+        ):
+            raise RuntimeError("PROVENIQ_ACCESS_TOKEN must be configured.") from None
+        raise

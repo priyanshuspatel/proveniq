@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.auth import AccessTokenMiddleware
 from app.api.routes import router
 from app.config import get_settings
 from app.persistence.database import init_db
@@ -134,8 +135,9 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "Accept"],
+        allow_headers=["Content-Type", "Accept", "Authorization"],
     )
+    app.add_middleware(AccessTokenMiddleware, access_token=settings.proveniq_access_token)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=settings.request_timeout_seconds)
     app.add_middleware(RequestSizeLimitMiddleware, max_body_bytes=settings.max_request_body_bytes)

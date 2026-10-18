@@ -8,6 +8,7 @@ Use this after Phase 8. Do not treat it as done.
 - Choose where the API and the site will run. No host account was created here.
 - Put `CORS_ORIGINS` on the API equal to the site origin. Do not use `*`.
 - Build the frontend with `NEXT_PUBLIC_API_URL` set to the public API origin.
+- Keep `PROVENIQ_ACCESS_TOKEN` only in the API runtime secret store. Never add it to frontend build args or `NEXT_PUBLIC_` variables.
 
 ## Secrets
 
@@ -17,6 +18,7 @@ Use this after Phase 8. Do not treat it as done.
 
 ## Backend
 
+- Set a long random `PROVENIQ_ACCESS_TOKEN` before starting the API. The API must refuse startup when it is missing.
 - Build `backend/Dockerfile`. Confirm the image has no Gemma weights and no `.env`.
 - Mount a persistent disk at `DATABASE_PATH`.
 - Set `APP_ENV=production`.
@@ -34,8 +36,13 @@ Use this after Phase 8. Do not treat it as done.
 ## Frontend
 
 - Build `frontend/Dockerfile` with the public API URL.
+- Enter the shared demo credential at the access screen and confirm that it is kept only in browser session storage.
 - Open the site, create a project, analyze one example notice, and download a Markdown report.
 - Confirm the page does not claim a legal clearance.
+
+The access gate is shared single-operator demo access, not multi-user authentication.
+It does not isolate projects between people who know the credential. Use only
+demonstration data and do not expose the API publicly until protected-route checks pass.
 
 ## Rollback
 

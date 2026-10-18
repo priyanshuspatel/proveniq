@@ -25,6 +25,7 @@ Set these in the host or container environment. Do not commit real values.
 | `DATABASE_PATH` | `./data/licensetrail.db` | `/data/licensetrail.db` |
 | `DATABASE_URL` | unset | unset until a Postgres migration exists |
 | `CORS_ORIGINS` | `http://127.0.0.1:3000,http://localhost:3000` | the real site origin, never `*` |
+| `PROVENIQ_ACCESS_TOKEN` | long random value in local `.env` | required secret in the API runtime; never expose it to the frontend build |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | a private address reachable only from the API; raw public Ollama hosts are refused |
 | `OLLAMA_MODEL` | `gemma2:2b` | `gemma2:2b` unless you measure another model |
 | `OLLAMA_API_KEY` | unset on localhost | optional credential for an actual private authentication proxy; it is not a security boundary by itself |
@@ -51,6 +52,26 @@ setting production traffic.
 - `GET /api/health` — same as liveness, kept for existing checks.
 
 Logs from `proveniq.access` record method, path, status, and duration. They do not record request bodies, license text, or the Ollama key.
+
+## Single-operator demo access gate
+
+Every non-health `/api` request requires an exact `Authorization: Bearer <token>`
+header. The backend compares that value with the runtime-only
+`PROVENIQ_ACCESS_TOKEN` using a constant-time comparison. The frontend never receives
+the environment variable: the operator enters the shared credential on the access
+screen, and the browser keeps it only in `sessionStorage`.
+
+Only these health endpoints are public:
+
+- `/api/health`
+- `/api/health/live`
+- `/api/health/ready`
+- `/api/health/inference`
+
+This gate is not accounts, sessions, or multi-user authentication. Anyone with the
+shared credential can access the same SQLite-backed projects and reports. Use only
+demonstration data, rotate the credential if it is disclosed, and do not advertise
+this mode as user isolation or production identity management.
 
 ## PostgreSQL migration, not done
 
@@ -84,4 +105,4 @@ Keep the previous API image and the SQLite volume. To roll back, start the previ
 
 ## Compose
 
-`docker-compose.yml` builds the API and web images and mounts a named volume for SQLite. It expects Ollama on the host at `host.docker.internal:11434`. It does not download model weights. These images were not built or run as a live deployment from this pass.
+`docker-compose.yml` builds the API and web images and mounts a named volume for SQLite. It requires `PROVENIQ_ACCESS_TOKEN` in the shell before startup, expects Ollama on the host at `host.docker.internal:11434`, and does not download model weights. These images were not built or run as a live deployment from this pass.

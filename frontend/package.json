@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/restore.test.ts src/lib/download.test.ts src/lib/projectFilters.test.ts",
+    "test": "node --experimental-strip-types --test src/lib/restore.test.ts src/lib/download.test.ts src/lib/projectFilters.test.ts src/lib/auth.test.ts src/lib/authGate.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

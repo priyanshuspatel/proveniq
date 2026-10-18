@@ -1,5 +1,7 @@
 from app.rules.engine import screen_asset
 
+from conftest import TEST_ACCESS_TOKEN
+
 
 def asset(**overrides):
     body = {
@@ -50,7 +52,7 @@ def test_saved_screening_is_retrieved_without_rerunning(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import create_app
 
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as client:
         project = client.post("/api/projects", json={"name": "Job", "declared_intended_use": "noncommercial"}).json()
         asset = client.post(
             f"/api/projects/{project['id']}/assets",
@@ -92,7 +94,7 @@ def test_project_use_change_invalidates_asset_screening(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import create_app
 
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as client:
         project = client.post("/api/projects", json={"name": "Job", "declared_intended_use": "commercial"}).json()
         asset = client.post(
             f"/api/projects/{project['id']}/assets",
@@ -146,7 +148,7 @@ def test_regression_cc_by_4_screening_pass_full_flow(tmp_path, monkeypatch):
     }
     monkeypatch.setattr("app.extraction.ollama.request.urlopen", lambda _req, timeout=0: FakeResponse(chat(draft_payload)))
 
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as client:
         project = client.post("/api/projects", json={"name": "CC BY Project", "declared_intended_use": "commercial"}).json()
         asset = client.post(
             f"/api/projects/{project['id']}/assets",
@@ -193,7 +195,7 @@ def test_regression_unsupported_licenses(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import create_app
 
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as client:
         project = client.post("/api/projects", json={"name": "Unsupported Project", "declared_intended_use": "commercial"}).json()
 
         for bad_license in ["MIT", "GPL-3.0", "Apache-2.0", "Proprietary"]:

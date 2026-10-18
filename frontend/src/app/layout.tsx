@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Source_Sans_3 } from "next/font/google";
 import Link from "next/link";
+import AuthGate from "@/components/AuthGate";
 import "./globals.css";
 
 const sourceSans = Source_Sans_3({
@@ -17,18 +18,20 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className={`${sourceSans.variable} antialiased`}>
-        <header className="no-print border-b border-line bg-card">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-4 sm:px-6 sm:py-5">
-            <Link href="/" className="no-underline">
-              <p className="text-xl font-semibold tracking-tight">Proveniq</p>
-              <p className="text-sm text-muted">Local license desk</p>
-            </Link>
-            <p className="max-w-xs text-right text-sm text-muted">
-              Records declarations and checked quotations. Not a legal clearance.
-            </p>
-          </div>
-        </header>
-         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
+        <AuthGate>
+          <header className="no-print border-b border-line bg-card">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-4 sm:px-6 sm:py-5">
+              <Link href="/" className="no-underline">
+                <p className="text-xl font-semibold tracking-tight">Proveniq</p>
+                <p className="text-sm text-muted">Local license desk</p>
+              </Link>
+              <p className="max-w-xs text-right text-sm text-muted">
+                Records declarations and checked quotations. Not a legal clearance.
+              </p>
+            </div>
+          </header>
+          <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
+        </AuthGate>
       </body>
     </html>
   );

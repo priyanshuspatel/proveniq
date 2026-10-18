@@ -1,4 +1,5 @@
 import type { Asset, FieldError, IntendedUse, Project, ReviewStatus } from "./types";
+import { AUTH_UNAUTHORIZED_EVENT, clearAccessCredential, readAccessCredential, requestHeaders } from "./auth.ts";
 
 export class ApiError extends Error {
   status: number;
@@ -27,15 +28,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${apiBase()}${path}`, {
       ...init,
-      headers: {
-        Accept: "application/json",
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
-        ...init?.headers,
-      },
+      headers: requestHeaders(readAccessCredential(), init?.headers, Boolean(init?.body)),
       cache: "no-store",
     });
   } catch {
     throw new ApiError("The API could not be reached. Start the backend, then try again.", 0);
+  }
+
+  if (response.status === 401) {
+    clearAccessCredential();
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_UNAUTHORIZED_EVENT));
   }
 
   if (!response.ok) {
@@ -54,6 +56,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return (await response.json()) as T;
 }
+
+export const authApi = {
+  verify: () => request<Project[]>("/api/projects"),
+};
 
 export function fieldMessage(error: unknown, loc: string): string | undefined {
   if (!(error instanceof ApiError)) return undefined;

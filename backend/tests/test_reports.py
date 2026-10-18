@@ -3,6 +3,8 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import TEST_ACCESS_TOKEN
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -12,7 +14,7 @@ def client(tmp_path, monkeypatch):
     get_settings.cache_clear()
     from app.main import create_app
 
-    with TestClient(create_app()) as test_client:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as test_client:
         yield test_client
     get_settings.cache_clear()
 

@@ -3,6 +3,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import TEST_ACCESS_TOKEN
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -12,7 +14,7 @@ def client(tmp_path, monkeypatch):
     get_settings.cache_clear()
     from app.main import create_app
 
-    with TestClient(create_app()) as test_client:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as test_client:
         yield test_client
     get_settings.cache_clear()
 
@@ -223,7 +225,7 @@ def test_records_survive_a_new_app_on_the_same_database(tmp_path, monkeypatch):
     get_settings.cache_clear()
     from app.main import create_app
 
-    with TestClient(create_app()) as first:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as first:
         created = first.post("/api/projects", json=project_payload())
         assert created.status_code == 201
         project_id = created.json()["id"]
@@ -232,7 +234,7 @@ def test_records_survive_a_new_app_on_the_same_database(tmp_path, monkeypatch):
         asset_id = asset.json()["id"]
     get_settings.cache_clear()
 
-    with TestClient(create_app()) as second:
+    with TestClient(create_app(), headers={"Authorization": f"Bearer {TEST_ACCESS_TOKEN}"}) as second:
         fetched = second.get(f"/api/projects/{project_id}")
         assert fetched.status_code == 200
         assert fetched.json()["name"] == "Harbor rebrand"

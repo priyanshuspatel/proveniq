@@ -18,6 +18,8 @@ services:
         value: /data/licensetrail.db
       - key: CORS_ORIGINS
         value: https://proveniq-web.onrender.com,https://proveniq.tech,https://www.proveniq.tech
+      - key: PROVENIQ_ACCESS_TOKEN
+        sync: false # Required shared demo credential; generate/store it in Render, never commit it.
       - key: OLLAMA_HOST
         sync: false # Set to a private Ollama/auth-proxy endpoint reachable only from the API; raw public Ollama is refused.
       - key: OLLAMA_MODEL

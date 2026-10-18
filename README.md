@@ -72,7 +72,8 @@ Opening an asset loads the project, the asset, saved evidence, and the last save
 - Node.js 22 (`.nvmrc`, `node --version`)
 - [Ollama](https://ollama.com) for local extraction
 
-No API key is required.
+No external model API key is required. A backend-only `PROVENIQ_ACCESS_TOKEN` is
+required to open the single-operator demo.
 
 The runtime pins and lockfiles are kept in the repository so a clean checkout can be
 rebuilt without global package installs. The commands below assume the shell is at the
@@ -92,7 +93,12 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`.env` holds only a local database path, CORS origins, and the local Ollama address. Do not put secrets in it. It is gitignored. The default database file is `backend/data/licensetrail.db`. That filename is kept so an existing local database still opens. The file stays out of Git. Leave `DATABASE_URL` unset. A `postgresql://` URL is refused at startup and is not connected. The queries use SQLite (`PRAGMA foreign_keys`, `ON CONFLICT`). Moving to Postgres would need a new driver and rewritten SQL, which is not implemented.
+Set `PROVENIQ_ACCESS_TOKEN` in the backend process environment or in the local
+gitignored `backend/.env` file. Use a long random value; never put it in source
+control or any `NEXT_PUBLIC_` variable. The browser asks for this shared credential
+at runtime and keeps the entered value in `sessionStorage` for that browser session.
+
+`.env` also holds the local database path, CORS origins, and local Ollama address. Do not put secrets in committed files. The default database file is `backend/data/licensetrail.db`. That filename is kept so an existing local database still opens. The file stays out of Git. Leave `DATABASE_URL` unset. A `postgresql://` URL is refused at startup and is not connected. The queries use SQLite (`PRAGMA foreign_keys`, `ON CONFLICT`). Moving to Postgres would need a new driver and rewritten SQL, which is not implemented.
 
 Frontend, in a second terminal:
 
@@ -157,11 +163,22 @@ down` when the processes are no longer needed. The named `proveniq-data` volume 
 the SQLite database. The frontend API origin is baked into the image at build time via
 the `NEXT_PUBLIC_API_URL` build argument.
 
+Before `docker compose up`, export the backend-only demo credential:
+
+```bash
+export PROVENIQ_ACCESS_TOKEN="use-a-long-random-demo-value"
+```
+
 The Dockerfiles are also the deployment inputs for `render.yaml`. No deployment is
 claimed from this repository; follow [`docs/deployment.md`](docs/deployment.md) and
 the [`docs/phase-9-checklist.md`](docs/phase-9-checklist.md) with the target account.
 The frontend image does not contain Gemma weights. Ollama stays on a private network
 or behind a real authentication proxy.
+
+The access gate is intentionally shared single-operator demo access, not multi-user
+authentication. It does not isolate projects between people who know the credential.
+Use only demonstration data in this mode and do not expose the API publicly until the
+token is configured and the protected-route tests pass.
 
 If Ollama is not running, extraction returns HTTP 503 `extraction_unavailable`. A timeout returns HTTP 504 `extraction_timeout`. Neither response includes a stack trace. The asset is not given a passing status.
 
