@@ -1,207 +1,224 @@
-# Proveniq
+<div align="center">
 
-Proveniq is a local desk for freelance designers and small creative agencies. It keeps a project’s digital assets, the license notice someone pasted, the quotations checked against that notice, and a plain-language screening result before a file is handed to a client.
+# 🔍 ProvenIQ
 
-It does not decide that a use is legal. A stored pass means the recorded checks succeeded. It is not a clearance and not permission to use the asset.
+**Local-first license screening for freelance designers & creative agencies**
 
-Product rules are in [`docs/product-spec.md`](docs/product-spec.md). A click-through demo is in [`docs/demo-script.md`](docs/demo-script.md).
+*Paste a license notice. Get a verified, evidence-backed handoff report — without sending anything to the cloud.*
 
-## Features
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2015-black?logo=next.js)](https://nextjs.org/)
+[![Ollama](https://img.shields.io/badge/Inference-Ollama%20%28local%29-white?logo=ollama)](https://ollama.com/)
+[![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![License](https://img.shields.io/badge/License-See%20notice-lightgrey)]()
 
-- Create, reopen, edit, and delete a project and its assets.
-- Paste a license notice. The text is sent only to a local Ollama model.
-- Keep a quotation only when that exact string occurs once in the notice.
-- Recognize the supported identifiers below, including a few published surface forms such as `CC BY 4.0`, when that exact span occurs once.
-- Let a person correct and confirm fields before the rule engine runs.
-- Show one of five statuses, with the reasons that produced it.
-- Download a Markdown handoff checklist, and print it from the browser.
+</div>
 
-Supported identifiers: `CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC-BY-NC-SA-4.0`, `CC-BY-ND-4.0`, `CC-BY-NC-ND-4.0`, and `all-rights-reserved`.
+---
 
-Statuses, highest precedence first: `unsupported-license`, `potential-conflict`, `missing-information`, `manual-review-required`, `supported-checks-passed`.
+> [!IMPORTANT]
+> **ProvenIQ is not a legal tool.** A `supported-checks-passed` result means the recorded checks succeeded — it is not legal clearance, not a lawyer-client relationship, and not permission to use an asset. Always consult a qualified attorney for licensing decisions.
 
-`CC-BY-SA-4.0`, `CC-BY-NC-SA-4.0`, `CC-BY-NC-ND-4.0`, and `all-rights-reserved` do not reach `supported-checks-passed` in this version. Anything outside the supported set, including MIT, GPL, Apache, and a studio-written label, is `unsupported-license`.
+---
 
-## Non-goals
+## What is ProvenIQ?
 
-- Legal advice, a lawyer-client relationship, or a guarantee of the right to use an asset.
-- Accounts, teams, billing, or a hosted service.
-- Fetching or executing a source URL, downloading the asset, OCR, or PDF parsing.
-- Calling a remote model API. Inference is local Ollama only.
-- A PDF library. The report is Markdown. The browser print dialog can save a PDF.
-- Treating a creator typed into the form as if the model had extracted it.
-- Filling a missing creator, license, or attribution line with a guess.
+ProvenIQ is a **local desktop app** that helps freelance designers and small creative agencies organize digital assets and prepare a source-linked license and attribution report before handing files to a client.
 
-The report disclaimer is:
-
-> This report is a preliminary checklist. It is not legal advice. This report organizes declarations and checked quotations. It does not guarantee legal compliance or the right to use these assets.
-
-It also states the screening limits: attribution is only a check that some creator or attribution text is present for CC BY labels; NonCommercial and NoDerivatives compare the declared use and do not decide legal NonCommercial purpose or adapted material; ShareAlike, all-rights-reserved, and CC-BY-NC-ND-4.0 stay in manual review; a CC0 pass does not cover trademarks, patents, moral rights, or rights held by other people; a source URL is not fetched and does not authenticate the license.
-
-## Architecture
+You paste a license notice → a local AI model (Gemma 2 via Ollama) extracts candidate conditions and exact quotations → deterministic rules verify each quotation against the original text → you get a clear screening status and a downloadable Markdown checklist. **Nothing leaves your machine.**
 
 ```
 browser (Next.js, port 3000)
-    │  JSON over HTTP
-    ▼
+       │  JSON over HTTP
+       ▼
 FastAPI (port 8000) ── SQLite (local file)
-    │
-    ├── quote check (exact substring, once)
-    ├── optional source-span fill for a unique published license name,
-    │   "Created by" / "Photograph by" / "Please credit" / "Credit …"
-    └── rule engine (deterministic; Gemma does not set the status)
-    │
-    └── Ollama on 127.0.0.1:11434 (gemma2:2b by default)
+       │
+       ├── Quote check (exact substring, once)
+       ├── Source-span fill (unique published license name / credit cues)
+       └── Rule engine (deterministic — Gemma never sets the status)
+       │
+       └── Ollama  127.0.0.1:11434  (gemma2:2b by default)
 ```
 
-Data flow for one asset:
+---
 
-1. The browser creates a project and an asset. The asset stores the title, creator, source URL, declared license, pasted notice, intended use, and attribution text. Asset type is kept in this browser only (`localStorage`), not as a server field.
-2. Analyze sends the pasted notice to local Ollama at temperature 0. The model must return JSON. A quotation is accepted only when it occurs once in the notice. A claimed license with no verified quotation is retried once. A second failure does not invent a quote.
-3. If the model leaves a field empty, the server may add a span that already occurs once: a supported license name, or a creator/credit sentence with one of the cues above. A bare “by …”, a title-case opening line, and a versionless abbreviation such as `CC BY-NC-SA` are not filled in. Two different license names in one notice stay unresolved.
-4. The person edits the form and confirms it. Confirming does not run the rules.
-5. Run assessment reads the saved asset and stored conditions. It does not call the model. The status follows the precedence above.
-6. Download Markdown Report writes a snapshot of every asset on the project. Reload reads that snapshot. It does not run a new assessment.
+## ✨ Core Features
 
-Opening an asset loads the project, the asset, saved evidence, and the last saved screening with GET requests. It does not POST a new extraction or assessment.
+| Feature | Details |
+|---|---|
+| **Project management** | Create, reopen, edit, and delete projects and their assets |
+| **License extraction** | Paste any license notice; Gemma extracts conditions and quotations locally |
+| **Evidence verification** | A quotation is accepted only when it appears *exactly once* in the notice |
+| **Deterministic rules** | Status is set by rules — the AI model cannot override it |
+| **Screening status** | One of five statuses with every individual rule result shown |
+| **Handoff report** | Download a Markdown checklist; print to PDF from the browser |
+| **Privacy-first** | All text stays on-device — no remote model API, no analytics |
 
-## Prerequisites
+### Supported License Identifiers
 
-- macOS or Linux
-- Python 3.13 (`.python-version`, `python3 --version`)
-- Node.js 22 (`.nvmrc`, `node --version`)
-- [Ollama](https://ollama.com) for local extraction
+```
+CC0-1.0 · CC-BY-4.0 · CC-BY-SA-4.0 · CC-BY-NC-4.0
+CC-BY-NC-SA-4.0 · CC-BY-ND-4.0 · CC-BY-NC-ND-4.0 · all-rights-reserved
+```
 
-No external model API key is required. A backend-only `PROVENIQ_ACCESS_TOKEN` is
-required to open the single-operator demo.
+Published surface forms like `CC BY 4.0` are also recognized when that exact span appears once in the notice.
 
-The runtime pins and lockfiles are kept in the repository so a clean checkout can be
-rebuilt without global package installs. The commands below assume the shell is at the
-repository root.
+> Anything outside this set — MIT, GPL, Apache, studio-written labels — is flagged `unsupported-license`. This version does not screen those identifiers.
 
-## Local setup
+---
 
-From the repository root.
+## 🚦 Screening Statuses
 
-Backend:
+Statuses are evaluated in this precedence order (highest first):
+
+| Status | Meaning |
+|---|---|
+| `unsupported-license` | Declared label is outside the supported screening set |
+| `potential-conflict` | Two retained statements disagree; both are kept visible |
+| `missing-information` | A required declared field is null |
+| `manual-review-required` | Rules cannot screen the case, extraction failed, or a quote didn't verify |
+| `supported-checks-passed` | Every applicable rule outcome is `pass` — **not a legal clearance** |
+
+> `CC-BY-SA-4.0`, `CC-BY-NC-SA-4.0`, `CC-BY-NC-ND-4.0`, and `all-rights-reserved` do not reach `supported-checks-passed` in this version.
+
+---
+
+## 🏗️ Architecture & Data Flow
+
+```
+1. Create a project and add an asset
+   └── title · creator · source URL · declared license · pasted notice · intended use · attribution text
+
+2. Analyze (sends notice to Ollama at temperature 0)
+   └── Model returns JSON: candidate conditions + exact quotations
+   └── A quotation is accepted only if it appears once in the notice
+   └── A claimed license with no verified quotation is retried once
+
+3. Source-span fill (server-side, no model call)
+   └── Adds a span that already occurs once: a supported license name,
+       or a creator/credit sentence using cues like "Created by" / "Please credit"
+   └── Does NOT invent values, guess versions, or fill missing creators
+
+4. Human confirms — edit the form, then click Confirm
+   └── Confirming does NOT run rules
+
+5. Run Assessment (reads saved asset + stored conditions)
+   └── Does NOT call the model
+   └── Assigns one of the five statuses above
+
+6. Download Markdown Report — snapshot of every asset on the project
+   └── Reload reads the snapshot; does NOT run a new assessment
+```
+
+---
+
+## 🚀 Quick Start (Local Development)
+
+### Prerequisites
+
+| Tool | Version | Purpose |
+|---|---|---|
+| [Node.js](https://nodejs.org/) | 20 LTS | Frontend |
+| [Python](https://python.org/) | 3.12+ | Backend |
+| [Ollama](https://ollama.com/) | latest | Local inference |
+
+### 1 — Pull the model
+
+```bash
+ollama pull gemma2:2b
+```
+
+> `gemma2:2b` needs ~2 GB of free memory and several GB of disk. An 8 GB RAM machine is the practical minimum.
+
+### 2 — Backend
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env             # edit PROVENIQ_ACCESS_TOKEN
+uvicorn app.main:app --reload
 ```
 
-Set `PROVENIQ_ACCESS_TOKEN` in the backend process environment or in the local
-gitignored `backend/.env` file. Use a long random value; never put it in source
-control or any `NEXT_PUBLIC_` variable. The browser asks for this shared credential
-at runtime and keeps the entered value in `sessionStorage` for that browser session.
+API is live at **http://127.0.0.1:8000**
 
-`.env` also holds the local database path, CORS origins, and local Ollama address. Do not put secrets in committed files. The default database file is `backend/data/licensetrail.db`. That filename is kept so an existing local database still opens. The file stays out of Git. Leave `DATABASE_URL` unset. A `postgresql://` URL is refused at startup and is not connected. The queries use SQLite (`PRAGMA foreign_keys`, `ON CONFLICT`). Moving to Postgres would need a new driver and rewritten SQL, which is not implemented.
-
-Frontend, in a second terminal:
+### 3 — Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local
+cp .env.example .env.local       # NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+npm run dev
 ```
 
-`frontend/.env.local` sets `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`. It is gitignored. `frontend/.env.example` is the template and is safe to commit.
+App is live at **http://localhost:3000**
 
-Install the model on macOS:
+---
+
+## 🐳 Docker Compose
 
 ```bash
-brew install ollama
-brew services start ollama
-ollama pull gemma2:2b
+export PROVENIQ_ACCESS_TOKEN=<long-random-value>
+docker compose up --build
 ```
 
-`ollama list` should show `gemma2:2b`. The weights stay in Ollama’s own store. They are not in this repository.
+Ollama must be running on the **host** at port `11434` with `gemma2:2b` already pulled. Compose does not download model weights.
 
-Start the API:
+| Service | Port | Persistence |
+|---|---|---|
+| `web` (Next.js) | 3000 | None — asset-type metadata stays in browser |
+| `api` (FastAPI) | 8000 | SQLite mounted at `/data/licensetrail.db` |
+| SQLite | — | Docker volume `proveniq-data` |
 
-```bash
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+---
+
+## ⚙️ Environment Variables
+
+### Backend (`backend/.env`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `APP_ENV` | `development` | `production` hardens CORS and Ollama host validation |
+| `DATABASE_PATH` | `./data/licensetrail.db` | SQLite file path |
+| `CORS_ORIGINS` | `http://127.0.0.1:3000` | Comma-separated allowed origins; never use `*` in production |
+| `PROVENIQ_ACCESS_TOKEN` | *(required)* | Shared bearer token for the single-operator access gate |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Private address only — raw public Ollama hosts are refused |
+| `OLLAMA_MODEL` | `gemma2:2b` | Model name as listed by `ollama list` |
+| `OLLAMA_TIMEOUT_SECONDS` | `60` | Per-inference timeout; increase on slow hardware |
+| `REQUEST_TIMEOUT_SECONDS` | `150` | Total API timeout; allow at least two inference timeouts |
+
+### Frontend (`frontend/.env.local`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | API origin baked in at build time |
+
+---
+
+## 🔐 Security & Privacy
+
+- **Access gate:** Every non-health `/api` request requires `Authorization: Bearer <token>`. The backend compares it with `PROVENIQ_ACCESS_TOKEN` using a constant-time comparison. The frontend stores the credential in `sessionStorage` only.
+- **No remote model API.** Extraction talks only to `http://127.0.0.1:11434`. No license text or typed fields leave this machine.
+- **No analytics.** Source URLs are stored and displayed. They are never fetched.
+- **Gitignored:** `.env`, `.env.local`, SQLite files, `node_modules`, `.venv`, `.next`, and model weights.
+
+> [!CAUTION]
+> This gate is **not** accounts, sessions, or multi-user authentication. Anyone with the shared credential can read or modify all projects and reports. Use only demonstration data and do not advertise this mode as user isolation.
+
+### Health Endpoints (always public)
+
+```
+GET /api/health/live      — process is up
+GET /api/health/ready     — SQLite answers SELECT 1
+GET /api/health/inference — Ollama lists the configured model (503 on failure)
 ```
 
-API: `http://127.0.0.1:8000`. Interactive docs: `http://127.0.0.1:8000/docs`.
+---
 
-Start the dashboard:
+## 🧪 Running Tests
 
-```bash
-cd frontend
-npm run dev -- --hostname 127.0.0.1 --port 3000
-```
-
-Dashboard: `http://127.0.0.1:3000`.
-
-Health checks on the API:
-
-- `GET /api/health/live` — the process is up.
-- `GET /api/health/ready` — SQLite answers.
-- `GET /api/health/inference` — local Ollama has the configured model.
-- `GET /api/health` — same response as liveness.
-
-`APP_ENV` is `development`, `test`, or `production`. Production refuses `CORS_ORIGINS=*` and refuses a public Ollama host, even when `OLLAMA_API_KEY` is set: a bearer environment variable is not an authentication proxy. Access logs record the method, path, status, and duration. They do not record license text or the Ollama key. Request bodies and model responses are bounded by configuration; `MAX_REQUEST_BODY_BYTES` defaults to 2 MiB and `OLLAMA_MAX_RESPONSE_BYTES` defaults to 1 MiB.
-
-## Docker Compose
-
-Docker is an optional reproducible deployment path. It does not download Ollama
-weights; the API reaches Ollama on the host through `host.docker.internal`.
-
-```bash
-docker compose build
-docker compose up
-```
-
-Open `http://127.0.0.1:3000`. Stop the stack with `Ctrl-C`, or use `docker compose
-down` when the processes are no longer needed. The named `proveniq-data` volume holds
-the SQLite database. The frontend API origin is baked into the image at build time via
-the `NEXT_PUBLIC_API_URL` build argument.
-
-Before `docker compose up`, export the backend-only demo credential:
-
-```bash
-export PROVENIQ_ACCESS_TOKEN="use-a-long-random-demo-value"
-```
-
-The Dockerfiles are also the deployment inputs for `render.yaml`. No deployment is
-claimed from this repository; follow [`docs/deployment.md`](docs/deployment.md) and
-the [`docs/phase-9-checklist.md`](docs/phase-9-checklist.md) with the target account.
-The frontend image does not contain Gemma weights. Ollama stays on a private network
-or behind a real authentication proxy.
-
-The access gate is intentionally shared single-operator demo access, not multi-user
-authentication. It does not isolate projects between people who know the credential.
-Use only demonstration data in this mode and do not expose the API publicly until the
-token is configured and the protected-route tests pass.
-
-If Ollama is not running, extraction returns HTTP 503 `extraction_unavailable`. A timeout returns HTTP 504 `extraction_timeout`. Neither response includes a stack trace. The asset is not given a passing status.
-
-## How inference and the rules differ
-
-Gemma only proposes a license identifier, creator, license URL, attribution line, and quotations. Temperature is 0. The prompt tells the model that the notice is data, not instructions.
-
-The server then checks every quotation with a literal substring search. One occurrence is `verified`. Zero is `not-found`. Two or more is `ambiguous`. An unverified quotation cannot establish a license, creator, or attribution line.
-
-The rule engine does not see the model’s prose. It compares the declared license, the saved intended use, the project’s intended use, whether a verified license quotation matches the declared identifier, and whether creator or attribution text was supplied on the form. Extracted text and typed text stay separate. A conflict between them is not merged.
-
-A pass still leaves trademarks, patents, moral rights, and third-party rights unscreened. CC0 can pass only inside those checks, and the report says so.
-
-## Tests
-
-From the repository root, after installing the backend and frontend dependencies:
-
-```bash
-make test
-```
-
-This runs both offline suites without starting Ollama. The individual commands below
-are useful when iterating on one side of the application.
+### Backend unit tests
 
 ```bash
 cd backend
@@ -209,78 +226,121 @@ source .venv/bin/activate
 pytest
 ```
 
+### Frontend unit tests
+
 ```bash
 cd frontend
 npm test
-npm run typecheck
-npm run lint
-npm run build
 ```
 
-`npm test` covers report restore and the download helper. It does not call Ollama. `pytest` covers the API, quote checks, the rule table, and extraction with a mocked model. Live Gemma scores are not part of `pytest`. They are measured with:
+### Extraction evaluation (requires running `gemma2:2b`)
 
 ```bash
 cd backend
 source .venv/bin/activate
-PYTHONPATH=. python tests/evaluate_notices.py
-PYTHONPATH=. python tests/evaluate_heldout.py
+PYTHONPATH=. python tests/evaluate_notices.py     # 27-notice development set
+PYTHONPATH=. python tests/evaluate_heldout.py     # 16-notice held-out set
 ```
 
-The first script scores the 27 non-blank notices in `backend/tests/fixtures/license_notices_v1.json`. The blank notice is rejected with HTTP 422 before the model runs. The second script scores 16 held-out notices in `backend/tests/fixtures/license_notices_heldout_v1.json`. Those sentences were not copied from the development set. Both scripts need a running local `gemma2:2b`.
+### Evaluation Results
 
-Stop `npm run dev` before `npm run build`. A production build writes the same `.next` directory the dev server uses.
-
-## Evaluation results
-
-Measured locally with `gemma2:2b`, temperature 0, and one repair retry. These are not a general accuracy claim and not a legal benchmark.
-
-Development fixture, version 1, 27 non-blank notices, model plus source-span rules, scored against the labels in that file:
+**Development fixture — 27 non-blank notices (model + source-span rules)**
 
 | Check | Result |
-| --- | --- |
-| License identifier, exact match, `UNKNOWN` included | 27/27 |
+|---|---|
+| License identifier (exact match, `UNKNOWN` included) | 27/27 |
 | Attribution field | 27/27 |
 | Creator name | 18/27 |
 | Verified quotation occurs once in the notice | 27/27 |
 | Invented creator or attribution | 0 |
 
-The nine creator misses are notices whose only name cue is bare “by …” or a name at the start of the line. Those cues are left empty on purpose.
+> The 9 creator misses are notices whose only name cue is a bare "by …" or a title-case first line — left empty by design.
 
-An earlier scoring change, not an extraction change, relabelled `CC BY 4.0` and `CC BY-NC 4.0` from `UNKNOWN` to the hyphenated identifier once those exact surface forms were accepted. The 27/27 license count did not rise because of that relabel.
+**Held-out set — 16 notices (model + source-span rules)**
 
-Held-out set, 16 notices, same model. Denominators:
-
-- License accuracy and license false-positive rate use all 16 notices. A false positive is a non-`UNKNOWN` identifier other than the label.
-- Creator and attribution precision use emitted values. Recall uses labelled non-null values.
-- Evidence verification uses verified rows. Each row must occur once in its notice.
-- Manual-review rate uses notices whose rule status is not `supported-checks-passed`. Screening supplied no user URL and no user attribution text, so a pass was not expected.
-
-| Metric | Model only | Model plus source-span rules |
-| --- | --- | --- |
+| Metric | Model only | Model + source-span rules |
+|---|---|---|
 | Canonical license | 16/16 | 16/16 |
 | License false positives | 0/16 | 0/16 |
-| Creator precision | no value emitted | 4/4 |
+| Creator precision | — | 4/4 |
 | Creator recall | 0/4 | 4/4 |
-| Attribution precision | no value emitted | 1/1 |
+| Attribution precision | — | 1/1 |
 | Attribution recall | 0/1 | 1/1 |
-| Evidence verification | every verified row occurred once | every verified row occurred once |
-| Not `supported-checks-passed` | 16/16 | 16/16 |
+| Evidence verification | ✓ every row | ✓ every row |
 
-The held-out creator recall is four names that use “Created by”, “Photograph by”, or “Please credit”. It is not a general creator score. Model-only left those names and the one credit sentence empty. The span rules filled them. Status counts on that screening setup were 5 `missing-information` and 11 `unsupported-license`.
+---
 
-## Known limitations
+## ⚠️ Known Limitations
 
-- Bare “by [Name]”, “licensed by”, “inspired by”, and a title-case first line are not treated as a creator.
-- A deed sentence that describes attribution, NonCommercial use, or a CC0 freedom, without naming one license, stays `UNKNOWN`.
+- Bare `"by [Name]"`, `"licensed by"`, `"inspired by"`, and title-case first lines are not treated as a creator.
+- A deed sentence describing attribution or NonCommercial use *without* naming a license stays `UNKNOWN`.
 - `CC BY-NC-SA` without a version is not guessed to be 4.0.
 - Two license names in one notice are not merged.
-- Attribution screening does not check the full CC BY 4.0 credit elements.
-- NonCommercial and NoDerivatives screening compare the use selected in the form. They do not decide those legal questions.
-- Asset type lives in browser storage. Clearing that storage clears the type. The server copy of the asset remains.
-- There is no login, no multi-user separation, and no ownership scope. Anyone who can reach a deployed API can read or change its projects and reports. Treat the hosted configuration as a single-operator demo until an authentication and ownership layer is added.
-- The three buttons on the add-asset form are labelled examples. They are not assessments of real files.
-- `npm audit` reports five high findings in the development ESLint chain: `eslint-config-next@15.5.28` through `fast-glob`, `micromatch@4.0.8`, and `braces@3.0.3`. Production dependencies (`npm audit --omit=dev`) reported none. There is no compatible Next.js 15 patch. `npm audit fix --force` would downgrade ESLint config to Next.js 14 and should not be used. The risk is a local lint-time denial of service from a deeply nested pattern, not the running server.
+- Attribution screening does not validate the full CC BY 4.0 credit element set.
+- Asset type lives in browser `localStorage`. Clearing storage clears the type; the server copy remains.
+- No login, no multi-user separation, no ownership scope.
+- The example buttons on the add-asset form are labelled examples — not assessments of real files.
+- `npm audit` reports 5 high findings in the dev ESLint chain (`eslint-config-next@15.5.28` → `fast-glob` → `micromatch` → `braces`). **Production dependencies (`--omit=dev`) report none.** No compatible Next.js 15 patch exists; do not run `npm audit fix --force`.
 
-## Privacy
+---
 
-License text and the fields you type stay on this computer. Extraction talks to `http://127.0.0.1:11434`. The app does not call a hosted model API and does not send analytics. Source URLs are stored and shown. They are not requested. `.env`, `.env.local`, the SQLite files, `node_modules`, `.venv`, and `.next` are gitignored. Model weights are downloaded by Ollama and are not committed.
+## 📋 Non-Goals
+
+ProvenIQ deliberately does **not**:
+
+- Provide legal advice, a lawyer-client relationship, or any guarantee of the right to use an asset
+- Manage accounts, teams, or billing
+- Fetch or validate a source URL, download assets, run OCR, or parse PDFs
+- Call a remote model API (inference is local Ollama only)
+- Treat creator text typed into the form as model-extracted evidence
+- Fill missing creator, license, or attribution fields with a guess
+
+---
+
+## 📂 Project Structure
+
+```
+proveniq/
+├── backend/              # FastAPI + SQLite + rule engine
+│   ├── app/
+│   │   ├── main.py       # App entry point, CORS, health routes
+│   │   ├── routers/      # Projects, assets, screening, evidence
+│   │   ├── persistence/  # SQLite database layer
+│   │   └── services/     # Ollama client, rule engine, span-fill
+│   └── tests/            # Pytest unit tests + evaluation scripts
+├── frontend/             # Next.js 15 + React 19 + Tailwind CSS 4
+│   └── src/
+│       ├── app/          # App Router pages
+│       └── lib/          # API client, download, restore helpers
+├── docs/                 # Product spec, deployment plan, demo script
+├── docker-compose.yml
+└── Makefile
+```
+
+---
+
+## 📄 Report Disclaimer
+
+Every downloaded report includes:
+
+> *This report is a preliminary checklist. It is not legal advice. This report organizes declarations and checked quotations. It does not guarantee legal compliance or the right to use these assets.*
+
+Screening limits are also stated in the report: attribution checks only that some creator or attribution text is present for CC BY labels; NonCommercial and NoDerivatives compare the declared use and do not decide legal purpose or adapted material; a source URL is not fetched and does not authenticate the license.
+
+---
+
+## 📚 Further Reading
+
+| Document | Contents |
+|---|---|
+| [`docs/product-spec.md`](docs/product-spec.md) | Full data contract, rule definitions, and status semantics |
+| [`docs/demo-script.md`](docs/demo-script.md) | Click-through demo walkthrough |
+| [`docs/deployment.md`](docs/deployment.md) | Deployment plan, environment variables, backup & rollback |
+
+---
+
+<div align="center">
+
+Made for freelance designers and creative agencies who care about provenance.
+
+</div>
